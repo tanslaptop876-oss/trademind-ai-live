@@ -53,6 +53,15 @@ For the built-in Upstox NSE equity adapter, set:
 
 The adapter combines V3 historical/intraday candles with a full-quote snapshot, including volume and best bid/ask spread when available. The three included large-cap equities have NSE instrument keys; an NSE instrument-master sync is still required before claiming full mid-/small-cap coverage. Never place broker tokens in browser code.
 
+For the built-in ICICI Direct Breeze NSE equity adapter, set:
+
+- `MARKET_PROVIDER` — `icici_breeze`
+- `ICICI_BREEZE_API_KEY` — Breeze application key (secret)
+- `ICICI_BREEZE_API_SECRET` — Breeze application secret (secret)
+- `ICICI_BREEZE_SESSION_TOKEN` — current Breeze session token (secret)
+
+The adapter signs every server-side request with SHA-256, loads Breeze Historical Data V2 candles and combines them with a quote snapshot. The session token must be refreshed according to ICICI Direct's session rules. The bundled Reliance, HDFC Bank and TCS instruments include Breeze stock codes; use ICICI's current instrument master for wider coverage. This integration is read-only and does not expose order-placement endpoints.
+
 ### Mid/small-cap universe scanner
 
 1. Start from `universe-template.csv` and populate current NSE rows with `symbol,name,cap,instrument_key` (`cap` must be `mid` or `small`).
@@ -67,7 +76,7 @@ Deploy through Git integration or Wrangler; Cloudflare does not support dashboar
 
 ## Important limitations
 
-All prices and histories in this MVP are illustrative demo data. Forecasts are mathematical scenarios, not guaranteed targets or investment advice. The application does not place trades, connect to a broker, or recommend position sizes.
+Until a licensed provider is configured, prices and histories are illustrative demo data. Forecasts are mathematical scenarios, not guaranteed targets or investment advice. The application can read configured market data but does not place broker orders or provide personalized investment recommendations.
 
 ## Run and deploy
 
@@ -82,3 +91,4 @@ Open `index.html` directly. It is a static project and can be deployed on Cloudf
 5. Backtest models with walk-forward validation, slippage and fees.
 6. Add authentication, saved watchlists and risk limits.
 7. Complete legal/compliance review before any public investment-facing release.
+
