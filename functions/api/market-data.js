@@ -15,6 +15,33 @@ async function alphaVantage({symbol,mode,interval,key}){
 }
 
 const isoDate=date=>date.toISOString().slice(0,10);
+const isoTimestamp=date=>`${date.toISOString().slice(0,19)}.000Z`;
+const sha256=async value=>Array.from(new Uint8Array(await crypto.subtle.digest('SHA-256',new TextEncoder().encode(value)))).map(byte=>byte.toString(16).padStart(2,'0')).join('');
+
+async function breezeRequest({path,body,apiKey,apiSecret,sessionToken,base='https://api.icicidirect.com/breezeapi/api/v1/'}){
+  const timestamp=isoTimestamp(new Date()),payload=JSON.stringify(body),checksum=await sha256(`${timestamp}${payload}${apiSecret}`);
+  const response=await fetch(new URL(path,base),{method:'GET',headers:{'content-type':'application/json','x-checksum':`token ${checksum}`,'x-timestamp':timestamp,'x-appkey':apiKey,'x-sessiontoken':sessionToken,accept:'application/json'},body:payload,signal:AbortSignal.timeout(10000)});
+  const data=await response.json().catch(()=>({}));
+  if(!response.ok||data?.Error)throw new Error(String(data?.Error||`ICICI Breeze HTTP ${response.status}`));
+  return data;
+}
+
+async function iciciBreeze({stockCode,mode,interval,apiKey,apiSecret,sessionToken}){
+  const now=new Date(),from=new Date(now),breezeInterval=interval==='daily'?'1day':({'1min':'1minute','5min':'5minute','15min':'5minute','30min':'30minute','60min':'30minute'}[interval]||'5minute');
+  from.setUTCDate(from.getUTCDate()-(mode==='live'?7:365));
+  const historyBody={interval:breezeInterval,from_date:isoTimestamp(from),to_date:isoTimestamp(now),stock_code:stockCode,exchange_code:'NSE',product_type:'cash'};
+  const quoteBody={stock_code:stockCode,exchange_code:'NSE',product_type:'cash',expiry_date:'',right:'others',strike_price:'0'};
+  const [history,quotePayload]=await Promise.all([
+    breezeRequest({path:'historicalcharts',body:historyBody,apiKey,apiSecret,sessionToken,base:'https://breezeapi.icicidirect.com/api/v2/'}),
+    breezeRequest({path:'quotes',body:quoteBody,apiKey,apiSecret,sessionToken})
+  ]);
+  const candles=history?.Success;if(!Array.isArray(candles))throw new Error('ICICI Breeze returned no historical candles');
+  const rows=candles.map(row=>({date:String(row.datetime||row.date||''),open:Number(row.open),high:Number(row.high),low:Number(row.low),close:Number(row.close),volume:Number(row.volume||0)})).filter(row=>row.date&&[row.open,row.high,row.low,row.close].every(Number.isFinite)).sort((a,b)=>a.date.localeCompare(b.date));
+  if(rows.length<35)throw new Error('ICICI Breeze returned fewer than 35 bars');
+  const quote=Array.isArray(quotePayload?.Success)?quotePayload.Success[0]:quotePayload?.Success||{},lastPrice=Number(quote.ltp)||rows.at(-1).close,bid=Number(quote.best_bid_price),ask=Number(quote.best_offer_price),spreadBps=bid>0&&ask>=bid?(ask-bid)/((ask+bid)/2)*10000:null,volumes=rows.slice(-20).map(row=>row.volume).filter(Number.isFinite),averageVolume=volumes.length?volumes.reduce((a,b)=>a+b,0)/volumes.length:null;
+  return {symbol:stockCode,type:'stocks',mode,interval,source:'ICICI Direct Breeze',delay:'Exchange snapshot; ICICI entitlement applies',currency:'INR',pe:null,quote:lastPrice,bid:Number.isFinite(bid)?bid:null,ask:Number.isFinite(ask)?ask:null,spreadBps:Number.isFinite(spreadBps)?spreadBps:null,averageVolume,asOf:String(quote.ltt||rows.at(-1).date),rows};
+}
+
 async function upstox({instrumentKey,mode,interval,token}){
   const headers={accept:'application/json',authorization:`Bearer ${token}`},now=new Date(),from=new Date(now),minuteInterval=interval==='daily'?15:Math.max(1,Number.parseInt(interval,10)||15);from.setUTCDate(from.getUTCDate()-(mode==='live'?28:365));
   const encoded=encodeURIComponent(instrumentKey),historyUrl=mode==='live'?`https://api.upstox.com/v3/historical-candle/${encoded}/minutes/${minuteInterval}/${isoDate(now)}/${isoDate(from)}`:`https://api.upstox.com/v3/historical-candle/${encoded}/days/1/${isoDate(now)}/${isoDate(from)}`,quoteUrl=`https://api.upstox.com/v2/market-quote/quotes?instrument_key=${encoded}`;
@@ -33,10 +60,16 @@ export async function onRequestGet(context){
   const mode=(requestUrl.searchParams.get('mode')||'eod').trim().toLowerCase();
   const interval=(requestUrl.searchParams.get('interval')||'daily').trim().toLowerCase();
   const upstoxKey=(requestUrl.searchParams.get('upstox_key')||'').trim().toUpperCase();
+  const iciciCode=(requestUrl.searchParams.get('icici_code')||'').trim().toUpperCase();
   if(!/^[A-Z0-9./_-]{1,24}$/.test(symbol)||!['stocks','crypto','mcx','forex'].includes(type)||!['live','eod'].includes(mode)||!['1min','5min','15min','30min','60min','daily'].includes(interval))return json({error:'Invalid market-data request'},400);
   if(context.env.MARKET_PROVIDER==='upstox'&&type==='stocks'){
     if(!context.env.UPSTOX_ACCESS_TOKEN)return json({error:'UPSTOX_ACCESS_TOKEN is not configured',mode:'demo'},503);if(!/^NSE_EQ\|[A-Z0-9]{8,20}$/.test(upstoxKey))return json({error:'A valid NSE Upstox instrument key is required'},400);
     try{const data=await upstox({instrumentKey:upstoxKey,mode,interval,token:context.env.UPSTOX_ACCESS_TOKEN});return json({...data,rows:data.rows.slice(-500)},200,{'cache-control':mode==='live'?'private, max-age=10':'private, max-age=300'})}catch(error){return json({error:error?.name==='TimeoutError'?'Upstox timed out':error.message||'Upstox request failed'},502)}
+  }
+  if(context.env.MARKET_PROVIDER==='icici_breeze'&&type==='stocks'){
+    if(!context.env.ICICI_BREEZE_API_KEY||!context.env.ICICI_BREEZE_API_SECRET||!context.env.ICICI_BREEZE_SESSION_TOKEN)return json({error:'ICICI Breeze credentials are not fully configured',mode:'demo'},503);
+    if(!/^[A-Z0-9]{1,16}$/.test(iciciCode))return json({error:'A valid ICICI Breeze stock code is required'},400);
+    try{const data=await iciciBreeze({stockCode:iciciCode,mode,interval,apiKey:context.env.ICICI_BREEZE_API_KEY,apiSecret:context.env.ICICI_BREEZE_API_SECRET,sessionToken:context.env.ICICI_BREEZE_SESSION_TOKEN});return json({...data,rows:data.rows.slice(-500)},200,{'cache-control':mode==='live'?'private, max-age=10':'private, max-age=300'})}catch(error){return json({error:error?.name==='TimeoutError'?'ICICI Breeze timed out':error.message||'ICICI Breeze request failed'},502)}
   }
   if(context.env.MARKET_PROVIDER==='alpha_vantage'&&type==='stocks'){
     if(!context.env.ALPHA_VANTAGE_API_KEY)return json({error:'ALPHA_VANTAGE_API_KEY is not configured',mode:'demo'},503);
@@ -58,3 +91,4 @@ export async function onRequestGet(context){
     return json({symbol,type,mode,interval,source:String(data.source||'Configured provider'),delay:String(data.delay||'Unknown'),currency:String(data.currency||''),pe:Number.isFinite(pe)?pe:null,quote:Number.isFinite(quote)?quote:null,asOf:String(data.asOf||rows.at(-1).date),rows},200,{'cache-control':mode==='live'?'public, max-age=15':'public, max-age=300'});
   }catch(error){return json({error:error?.name==='TimeoutError'?'Provider timed out':'Provider connection failed'},504)}
 }
+
