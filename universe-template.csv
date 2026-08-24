@@ -1,0 +1,3 @@
+symbol,name,cap,instrument_key
+EXAMPLEMID,Example Mid Cap,mid,NSE_EQ|INE000A00000
+EXAMPLESMALL,Example Small Cap,small,NSE_EQ|INE000B00000
