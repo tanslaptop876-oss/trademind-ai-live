@@ -57,10 +57,9 @@ For the built-in ICICI Direct Breeze NSE equity adapter, set:
 
 - `MARKET_PROVIDER` — `icici_breeze`
 - `ICICI_BREEZE_API_KEY` — Breeze application key (secret)
-- `ICICI_BREEZE_API_SECRET` — Breeze application secret (secret)
 - `ICICI_BREEZE_SESSION_TOKEN` — current Breeze session token (secret)
 
-The adapter signs every server-side request with SHA-256, loads Breeze Historical Data V2 candles and combines them with a quote snapshot. The session token must be refreshed according to ICICI Direct's session rules. The bundled Reliance, HDFC Bank and TCS instruments include Breeze stock codes; use ICICI's current instrument master for wider coverage. This integration is read-only and does not expose order-placement endpoints.
+The adapter requests Breeze Historical Data V2 candles with the server-side application key and session token. The latest available candle is the displayed price, with its timestamp. Fifteen-minute and hourly bars are aggregated from native 5-minute and 30-minute candles; weekly and monthly bars are aggregated from daily candles. The session token must be refreshed according to ICICI Direct's session rules. The bundled Reliance, HDFC Bank and TCS instruments include Breeze stock codes; use ICICI's current instrument master for wider coverage. This integration is read-only and does not expose order-placement endpoints.
 
 ### Mid/small-cap universe scanner
 
