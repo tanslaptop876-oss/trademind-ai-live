@@ -1,0 +1,14 @@
+const assert=require('node:assert/strict');
+const {run}=require('../backtest-engine.js');
+const prices=Array.from({length:70},(_,i)=>100+i);
+const result=run(prices,3,5,0);
+assert.equal(result.equity.length,prices.length);
+assert.equal(result.hold.length,prices.length);
+assert.equal(result.equity[5],1,'signal at bar 4 cannot earn earlier return');
+assert.ok(result.equity[6]>1,'signal at bar 4 executes on bar 5, first return is bar 6');
+assert.equal(result.trades.length,0,'open position is not a completed trade');
+assert.equal(result.winRate,null);
+const fee=run(prices,3,5,1);
+assert.ok(fee.strategyReturn<result.strategyReturn);
+assert.throws(()=>run([1,2,0,4,5,6,7,8],2,3,0),/valid positive/);
+console.log('Backtest timing and validation passed');
