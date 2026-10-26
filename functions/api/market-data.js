@@ -65,6 +65,8 @@ export async function onRequestGet(context){
   }
   if(context.env.MARKET_PROVIDER==='icici_breeze'&&type==='stocks'){
     if(!context.env.ICICI_BREEZE_API_KEY||!context.env.ICICI_BREEZE_SESSION_TOKEN)return json({error:'ICICI Breeze API key and session token are not configured',mode:'demo'},503);
+    if(!context.env.MARKET_ACCESS_TOKEN)return json({error:'MARKET_ACCESS_TOKEN is required before enabling public broker data',mode:'demo'},503,{'cache-control':'no-store'});
+    if(context.request.headers.get('x-market-access')!==context.env.MARKET_ACCESS_TOKEN)return json({error:'TradeMind access code is required',mode:'demo'},401,{'cache-control':'no-store'});
     if(!/^[A-Z0-9]{1,16}$/.test(iciciCode))return json({error:'A valid ICICI Breeze stock code is required'},400);
     try{const data=await iciciBreeze({stockCode:iciciCode,mode,interval,apiKey:context.env.ICICI_BREEZE_API_KEY,sessionToken:context.env.ICICI_BREEZE_SESSION_TOKEN});return json({...data,rows:data.rows.slice(-500)},200,{'cache-control':mode==='live'?'private, max-age=10':'private, max-age=300'})}catch(error){return json({error:error?.name==='TimeoutError'?'ICICI Breeze timed out':error.message||'ICICI Breeze request failed'},502)}
   }
