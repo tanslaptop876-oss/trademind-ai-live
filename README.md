@@ -62,9 +62,9 @@ For the built-in ICICI Direct Breeze NSE equity adapter, set:
 
 The adapter requests Breeze Historical Data V2 candles with the server-side application key and session token. The latest available candle is the displayed price, with its timestamp. Fifteen-minute and hourly bars are aggregated from native 5-minute and 30-minute candles; weekly and monthly bars are aggregated from daily candles. The session token must be refreshed according to ICICI Direct's session rules. The bundled Reliance, HDFC Bank and TCS instruments include Breeze stock codes; use ICICI's current instrument master for wider coverage. This integration is read-only and does not expose order-placement endpoints.
 
-### FYERS alternative for the historical screener
+### FYERS alternative for the dashboard and historical screener
 
-The historical screener now supports FYERS NSE cash equities without Breeze.
+The dashboard and historical screener support FYERS NSE cash equities without Breeze.
 Set these **server-side** Cloudflare bindings:
 
 - `MARKET_PROVIDER=fyers`
@@ -91,8 +91,14 @@ before contacting FYERS. Rate-limit errors stop the request without automatic
 retries. The existing 30-second browser cooldown is per session, not a shared
 server rate limiter: for multiple users, add account-wide throttling/caching
 before scaling. Each stock uses one history request plus one quote request in
-intraday mode. The dashboard connection and Upstox batch scanner are separate
-flows; this setup is for the historical screener.
+intraday mode. The dashboard uses the same server configuration: enter the
+separate TradeMind access code in Connections, select a bundled NSE stock,
+then choose Load selected instrument. Test connection verifies access without
+replacing the chart. The code stays in the page and is sent only in a request
+header, never in the URL or browser storage. Late responses after changing the
+instrument, interval or mode are ignored. The Upstox batch scanner remains a
+separate flow. Dashboard refreshes have no automatic polling or shared quota
+limiter; avoid repeated requests against provider limits.
 
 FYERS documents a free Standard plan with 5 data requests/second,
 50/minute and 5,000/day; an account, API app, authentication and applicable
@@ -114,6 +120,7 @@ node tests/screener-engine.cjs
 node tests/market-data-breeze.cjs
 node tests/market-data-fyers.cjs
 node tests/screener-provider.cjs
+node tests/dashboard-market-data.cjs
 ```
 
 FYERS tests use mocked provider responses; a deployed smoke test with actual
