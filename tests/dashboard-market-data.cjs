@@ -36,5 +36,23 @@ vm.runInContext(source.slice(source.indexOf('const markets='),source.indexOf('co
  pending=[];const intervalSwitch=context.requestMarketData(true);$('#barInterval').value='daily';pending[0]({ok:true,json:async()=>payload});await intervalSwitch;assert.equal(context.providerMeta,fresh);
  context.fetch=async()=>{const e=new Error('internal timeout');e.name='TimeoutError';throw e};await context.requestMarketData(true);assert.equal(toasts.at(-1),'Market-data request timed out');
  assert.equal(context.providerMeta,fresh);
- console.log('Dashboard: broker symbols, header-only access code, test/load isolation, errors, timeout and stale-response protection passed');
+ pending=[];context.fetch=()=>new Promise(resolve=>pending.push(resolve));
+ const abandoned=context.requestMarketData(true);context.resetMarketData();
+ assert.equal(context.providerMeta,null);assert.equal(context.importedRows,null);
+ assert.equal($('#sourceMetadata').textContent,'Source: illustrative demo');
+ assert.equal($('#connectionStatus').textContent,'Demo mode');
+ // Returning to the same instrument must not revive its abandoned request.
+ pending[0]({ok:true,json:async()=>payload});await abandoned;
+ assert.equal(context.providerMeta,null);assert.equal(context.importedRows,null);
+ // A CSV imported after a request starts must remain the selected data source.
+ pending=[];const beforeImport=context.requestMarketData(true);context.resetMarketData();
+ const csvRows=rows.slice();context.importedRows=csvRows;
+ pending[0]({ok:true,json:async()=>payload});await beforeImport;
+ assert.equal(context.importedRows,csvRows);assert.equal(context.providerMeta,null);
+ const scannerCode=source.slice(source.indexOf('function loadScannerAsset('),source.indexOf('\n',source.indexOf('function loadScannerAsset(')));
+ vm.runInContext(scannerCode,context);context.$$=()=>[];context.setupSelect=()=>{};
+ context.window={scrollTo(){}};context.document={querySelector:()=>({offsetTop:100})};
+ context.providerMeta=payload;context.importedRows=rows;context.loadScannerAsset('stocks',1);
+ assert.equal(context.activeIndex,1);assert.equal(context.providerMeta,null);assert.equal(context.importedRows,null);
+ console.log('Dashboard: broker access, test/load isolation, errors, timeout, scanner reset, CSV preservation and stale-response protection passed');
 })().catch(error=>{console.error(error);process.exit(1)});
