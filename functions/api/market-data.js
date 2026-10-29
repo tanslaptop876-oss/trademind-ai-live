@@ -50,6 +50,46 @@ async function upstox({instrumentKey,mode,interval,token}){
   return {symbol:instrumentKey,type:'stocks',mode,interval,source:'Upstox',delay:'Exchange snapshot; plan entitlement applies',currency:'INR',pe:null,quote:lastPrice,bid:Number.isFinite(bid)?bid:null,ask:Number.isFinite(ask)?ask:null,spreadBps:Number.isFinite(spreadBps)?spreadBps:null,averageVolume,asOf:String(quote.timestamp||rows.at(-1).date),rows};
 }
 
+// FYERS Standard: read-only NSE cash candles and a current quote snapshot.
+async function fyers({symbol,mode,interval,appId,token}){
+  const resolution=({'1min':'1','5min':'5','15min':'15','30min':'30','60min':'60',daily:'D'})[interval];
+  const now=new Date(),from=new Date(now);
+  from.setUTCDate(from.getUTCDate()-(interval==='daily'?365:28));
+  const headers={accept:'application/json',authorization:`${appId}:${token}`};
+  async function get(path,params){
+    const url=new URL(`https://api-t1.fyers.in/data/${path}`);
+    for(const [key,value] of Object.entries(params))url.searchParams.set(key,value);
+    const response=await fetch(url,{headers,signal:AbortSignal.timeout(9000)});
+    if(response.status===429)throw Error('FYERS rate limit reached; wait before retrying');
+    if(!response.ok)throw Error(`FYERS ${path} HTTP ${response.status}`);
+    const data=await response.json();
+    if(data?.code===-429)throw Error('FYERS rate limit reached; wait before retrying');
+    // Never echo provider messages: they may contain credentials or request details.
+    if(data?.s!=='ok')throw Error(`FYERS ${path} request rejected; check server credentials and permissions`);
+    return data;
+  }
+  const history=await get('history',{symbol,resolution,date_format:'1',range_from:isoDate(from),range_to:isoDate(now),cont_flag:'0'});
+  if(!Array.isArray(history.candles))throw Error('FYERS returned no candles');
+  const seen=new Set();
+  const rows=history.candles.map(c=>{
+    if(!Array.isArray(c)||c.length<6||c.slice(0,6).some(v=>v===null||v===''||!['number','string'].includes(typeof v)))throw Error('FYERS returned invalid OHLCV data');
+    const [stamp,open,high,low,close,volume]=c.slice(0,6).map(Number);
+    if(![stamp,open,high,low,close,volume].every(Number.isFinite)||stamp<=0||stamp>now.getTime()/1000||Math.min(open,high,low,close)<=0||volume<0||high<Math.max(open,close)||low>Math.min(open,close)||seen.has(stamp))throw Error('FYERS returned invalid OHLCV data');
+    seen.add(stamp);
+    return {date:new Date(stamp*1000).toISOString(),open,high,low,close,volume};
+  }).sort((a,b)=>a.date.localeCompare(b.date)).slice(-500);
+  if(rows.length<35)throw Error('FYERS returned fewer than 35 bars');
+  let quote=rows.at(-1).close,asOf=rows.at(-1).date;
+  if(mode==='live'){
+    const payload=await get('quotes',{symbols:symbol});
+    const item=payload.d?.find(q=>q.n===symbol&&q.s==='ok'),value=item?.v;
+    const price=Number(value?.lp),stamp=Number(value?.tt);
+    if(!Number.isFinite(price)||price<=0||!Number.isFinite(stamp)||stamp<=0||stamp>now.getTime()/1000+60)throw Error('FYERS returned an invalid quote or timestamp');
+    quote=price;asOf=new Date(stamp*1000).toISOString();
+  }
+  return {symbol,type:'stocks',mode,interval,source:'FYERS',delay:mode==='live'?'Quote snapshot; candles may include an unfinished bar':'Historical candles; latest daily bar may be unfinished',currency:'INR',pe:null,quote,asOf,rows};
+}
+
 export async function onRequestGet(context){
   const requestUrl=new URL(context.request.url);
   const symbol=(requestUrl.searchParams.get('symbol')||'').trim().toUpperCase();
@@ -58,7 +98,18 @@ export async function onRequestGet(context){
   const interval=(requestUrl.searchParams.get('interval')||'daily').trim().toLowerCase();
   const upstoxKey=(requestUrl.searchParams.get('upstox_key')||'').trim().toUpperCase();
   const iciciCode=(requestUrl.searchParams.get('icici_code')||'').trim().toUpperCase();
+  const requestedProvider=requestUrl.searchParams.get('provider');
+  if(requestedProvider&&requestedProvider!==context.env.MARKET_PROVIDER)return json({error:'Selected provider does not match server configuration'},400,{'cache-control':'no-store'});
   if(!/^[A-Z0-9./_-]{1,24}$/.test(symbol)||!['stocks','crypto','mcx','forex'].includes(type)||!['live','eod'].includes(mode)||!['1min','5min','15min','30min','60min','daily','weekly','monthly'].includes(interval))return json({error:'Invalid market-data request'},400);
+  if(context.env.MARKET_PROVIDER==='fyers'){
+    const headers={'cache-control':'no-store'};
+    if(type!=='stocks'||['weekly','monthly'].includes(interval))return json({error:'FYERS supports NSE equities at 1, 5, 15, 30, 60 minute or daily intervals in this integration'},400,headers);
+    if(!context.env.FYERS_APP_ID||!context.env.FYERS_ACCESS_TOKEN||!context.env.MARKET_ACCESS_TOKEN)return json({error:'FYERS server credentials and MARKET_ACCESS_TOKEN must be configured',mode:'demo'},503,headers);
+    if(context.request.headers.get('x-market-access')!==context.env.MARKET_ACCESS_TOKEN)return json({error:'TradeMind access code is required',mode:'demo'},401,headers);
+    const fyersSymbol=(requestUrl.searchParams.get('fyers_symbol')||'').trim().toUpperCase();
+    if(!/^NSE:[A-Z0-9_-]{1,24}-EQ$/.test(fyersSymbol))return json({error:'A valid FYERS NSE equity symbol is required, for example NSE:RELIANCE-EQ'},400,headers);
+    try{return json(await fyers({symbol:fyersSymbol,mode,interval,appId:context.env.FYERS_APP_ID,token:context.env.FYERS_ACCESS_TOKEN}),200,headers)}catch(error){return json({error:error?.name==='TimeoutError'?'FYERS timed out':/^FYERS /.test(error.message)?error.message:'FYERS connection failed'},502,headers)}
+  }
   if(context.env.MARKET_PROVIDER==='upstox'&&type==='stocks'){
     if(!context.env.UPSTOX_ACCESS_TOKEN)return json({error:'UPSTOX_ACCESS_TOKEN is not configured',mode:'demo'},503);if(!/^NSE_EQ\|[A-Z0-9]{8,20}$/.test(upstoxKey))return json({error:'A valid NSE Upstox instrument key is required'},400);
     try{const data=await upstox({instrumentKey:upstoxKey,mode,interval,token:context.env.UPSTOX_ACCESS_TOKEN});return json({...data,rows:data.rows.slice(-500)},200,{'cache-control':mode==='live'?'private, max-age=10':'private, max-age=300'})}catch(error){return json({error:error?.name==='TimeoutError'?'Upstox timed out':error.message||'Upstox request failed'},502)}
