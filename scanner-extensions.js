@@ -81,7 +81,25 @@
     const raw=last.close>resistance?'UP':last.close<support?'DOWN':'WAIT';
     return {direction:confirmed?raw:'WAIT',candidate:raw,volumeConfirmed:confirmed,volumeRatio,volumeAvailable:withVolume,lookback,atr,resistance,support,asOf:last.timestamp,price:last.close,reason:raw!=='WAIT'&&!confirmed?'Breakout needs valid volume confirmation':null,kind:'rule_based_not_probability'};
   }
-  const api={aggregate,multiTimeframe,breakout,verified};
+  // Broker candle freshness guard. Never assert real-time status from date-only data.
+  function candleFreshness(timestamp, interval, now=Date.now()){
+    const durations={'1min':60000,'5min':300000,'15min':900000,'30min':1800000,'60min':3600000};
+    if(!Object.prototype.hasOwnProperty.call(durations,interval))
+      return {status:'EOD',fresh:false,reason:'Not an intraday live interval'};
+    const raw=String(timestamp||'').trim();
+    // For timezone-naive Indian exchange timestamps interpret wall-clock as Asia/Kolkata.
+    const normalized=/^\\d{4}-\\d{2}-\\d{2}[ T]\\d{2}:\\d{2}/.test(raw)&&!/(Z|[+-]\\d{2}:?\\d{2})$/i.test(raw)
+      ?raw.replace(' ','T')+'+05:30':raw;
+    const ts=Date.parse(normalized),age=now-ts,span=durations[interval];
+    if(!Number.isFinite(ts)||!Number.isFinite(now))return {status:'UNKNOWN',fresh:false,reason:'Invalid candle timestamp'};
+    if(age < -span)return {status:'FUTURE',fresh:false,reason:'Candle time is in the future'};
+    const marketMinutes=((Math.floor(now/60000)+330)%1440+1440)%1440;
+    const day=new Date(now+330*60000).getUTCDay();
+    const marketOpen=day>=1&&day<=5&&marketMinutes>=555&&marketMinutes<=930;
+    const fresh=marketOpen&&age>=-span&&age<=2*span+300000;
+    return {status:fresh?'RECENT':'STALE',fresh,ageMinutes:Math.round(age/60000),reason:fresh?'Recent broker candle; provider entitlement/delay unverified':marketOpen?'Last candle too old':'NSE trading session is not active'};
+  }
+  const api={aggregate,multiTimeframe,breakout,verified,candleFreshness};
   root.TradeMindScannerExtensions=api;
   if(typeof module!=='undefined'&&module.exports)module.exports=api;
 })(typeof window!=='undefined'?window:globalThis);
