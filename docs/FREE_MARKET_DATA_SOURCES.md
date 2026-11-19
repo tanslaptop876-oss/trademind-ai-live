@@ -38,3 +38,14 @@ Use authenticated existing **ICICI Breeze** or **Upstox** read-only adapters for
 - Never conflate free daily FX, delayed broker data, synthetic demo, and exchange-traded live candles.
 - Do not create order routes, connect private account endpoints, or surface model confidence without out-of-sample validation.
 - Unit tests for the new adapters: `node tests/market-data-free.cjs`. Live provider tests must be separate and opt-in.
+
+## Real public-provider smoke test (GitHub Actions)
+
+The separate GitHub Actions workflow `.github/workflows/public-data-smoke.yml` performs no-key, read-only network calls using `tests/live-public-providers.cjs`. It runs on changes to the provider adapter/smoke-test files and can also be triggered manually. It is intentionally separate from mocked unit tests: third-party provider outages should be reported, not misrepresented as scanner bugs.
+
+**Verified on 2026-11-20 IST:** [workflow run 44601651898](https://github.com/tanslaptop876-oss/trademind-ai-live/actions/runs/44601651898) succeeded:
+- CoinDCX BTCUSDT, 15-minute candle endpoint: 500 candles, last returned opening timestamp `2026-11-19T19:45:00.000Z`, approximately one minute old at query time.
+- Frankfurter USDINR daily reference API: successful response dated `2026-11-19`. This **does not** supply intraday OHLCV and cannot be treated as tradable FX signal data.
+- The workflow used no exchange/broker account credentials, no secrets, no trading endpoints and no D1 writes.
+
+These results establish successful public API connectivity **from the GitHub runner at that instant**, not SLA, market data resale rights, exchange entitlement, Cloudflare connectivity, all symbols/intervals, or production readiness. The newest returned CoinDCX candle may be forming and must be excluded until closed. Next required checks: Cloudflare preview deployment, full browser UI exercise, persistent D1 binding/migrations, actual ICICI Breeze access and licensing review.
