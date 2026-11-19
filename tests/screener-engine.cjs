@@ -60,3 +60,19 @@ const insufficient=multiTimeframe([{timeframe:'15m',rows:upward},{timeframe:'1h'
 assert.equal(insufficient.direction,'WAIT');
 assert.throws(()=>multiTimeframe([{timeframe:'15m',rows:upward},{timeframe:'1h',rows:[upward[1],upward[0]]}]),/unique, and increasing/);
 console.log('Three-timeframe consensus, conflict and incomplete-history checks passed');
+
+const {planTrade}=require('../scanner-extensions.js');
+const pricing=sample(40,60000,0.25);
+const longPlan=planTrade(pricing,'UP',{stopAtr:1.5,targetR:2});
+assert.equal(longPlan.status,'PLAN');
+assert.equal(longPlan.executable,false);
+assert.equal(longPlan.side,'LONG');
+assert.ok(longPlan.stop<longPlan.entry&&longPlan.target>longPlan.entry);
+assert.ok(Math.abs((longPlan.target-longPlan.entry)/(longPlan.entry-longPlan.stop)-2)<1e-10);
+const shortPlan=planTrade(pricing,'DOWN');
+assert.equal(shortPlan.side,'SHORT');
+assert.ok(shortPlan.stop>shortPlan.entry&&shortPlan.target<shortPlan.entry);
+assert.equal(planTrade(pricing,'WAIT').status,'WAIT');
+assert.equal(planTrade(pricing.slice(0,10),'UP').status,'WAIT');
+assert.throws(()=>planTrade(pricing,'UP',{stopAtr:-1}),/Invalid risk settings/);
+console.log('Closed-candle non-executable ATR risk plans passed');
