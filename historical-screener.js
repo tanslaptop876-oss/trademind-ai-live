@@ -14,9 +14,9 @@ function renderSignals(){
   const recent=broker&&freshness&&freshness.fresh;
   tag.textContent=broker?(recent?'RECENT BROKER CANDLES · ':'HISTORICAL / STALE BROKER · ')+interval:crypto?'PUBLIC CRYPTO CANDLES · '+interval:source==='NO DATA'?'NO LIVE SIGNAL':source+' · NOT LIVE';
   notice.textContent=broker?(freshness.reason+'. Read-only broker snapshot; possible exchange delay. Most recent candle excluded. No orders or AI probability claims.'):crypto?'CoinDCX public historical candles. Most recent returned bar excluded because close completion is unverified; exchange delivery may be delayed. No validated AI probability or orders.':'Demo / imported CSV signals are NOT LIVE. Rule-based technical evidence only; no orders or calibrated AI prediction.';
-  if(!entries.length){body.innerHTML='<tr><td colspan="5">Load candles to see research signals.</td></tr>';return}
+  if(!entries.length){body.innerHTML='<tr><td colspan="6">Load candles to see research signals.</td></tr>';return}
   const chosen=selected();
-  if(chosen.length<2){body.innerHTML='<tr><td colspan="5">Select at least two indicators.</td></tr>';return}
+  if(chosen.length<2){body.innerHTML='<tr><td colspan="6">Select at least two indicators.</td></tr>';return}
   body.innerHTML=entries.map(entry=>{
     try{
       const rows=broker?entry.rows.slice(0,-1):entry.rows;
@@ -25,8 +25,11 @@ function renderSignals(){
       if(outcome.error)throw Error(outcome.error);
       const signal=outcome.direction==='UP'?'BUY':outcome.direction==='DOWN'?'SELL':'WAIT';
       const evidence=outcome.votes+'/'+outcome.total+' bullish checks, RSI '+outcome.rsi.toFixed(1)+', volume '+outcome.volumeRatio.toFixed(2)+'x';
-      return '<tr><td>'+escape(entry.symbol)+'</td><td><strong>'+signal+'</strong><small>Rules only</small></td><td>'+outcome.price.toFixed(2)+'</td><td>'+escape(outcome.asOf)+'</td><td>'+escape(evidence)+'</td></tr>';
-    }catch(error){return '<tr><td>'+escape(entry.symbol)+'</td><td colspan="4">WAIT · '+escape(error.message)+'</td></tr>'}
+      const planRows=rows.map(r=>({timestamp:r.date,open:r.open,high:r.high,low:r.low,close:r.close,volume:r.volume,complete:true}));
+      const plan=window.TradeMindScannerExtensions.planTrade(planRows,outcome.direction);
+      const levels=plan.status==='PLAN'?'Entry '+plan.entry.toFixed(2)+' / SL '+plan.stop.toFixed(2)+' / Target '+plan.target.toFixed(2)+' (R:R 1:'+plan.rewardRisk.toFixed(1)+')':'No plan · '+escape(plan.reason);
+      return '<tr><td>'+escape(entry.symbol)+'</td><td><strong>'+signal+'</strong><small>Rules only</small></td><td>'+outcome.price.toFixed(2)+'</td><td>'+escape(outcome.asOf)+'</td><td>'+levels+'<small>Illustrative · no orders</small></td><td>'+escape(evidence)+'</td></tr>';
+    }catch(error){return '<tr><td>'+escape(entry.symbol)+'</td><td colspan="5">WAIT · '+escape(error.message)+'</td></tr>'}
   }).join('');
 }
 function load(text,label){try{entries=engine.parse(text);source=label;recalculate();$('sourceTag').textContent=label;$('status').textContent=`Loaded ${entries.length} symbols; ${results.filter(x=>!x.error).length} have enough history. ${label==='DEMO DATA'?'All example prices are synthetic.':'CSV stays in this browser session.'}`;if(label!=='BROKER DATA')$('liveBadge').textContent='NOT CONNECTED';renderSignals()}catch(error){$('status').textContent=error.message;entries=[];results=[];render();renderSignals()}}
