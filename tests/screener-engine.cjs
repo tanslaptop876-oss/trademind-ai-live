@@ -47,3 +47,16 @@ assert.equal(candleFreshness('bad timestamp','5min',marketTime).status,'UNKNOWN'
 assert.equal(candleFreshness('2026-11-19 12:00:00','5min',marketTime).status,'FUTURE');
 assert.equal(candleFreshness('2026-11-19 10:10:00','5min',Date.parse('2026-11-19T18:00:00+05:30')).fresh,false);
 console.log('Broker candle freshness and fail-closed status checks passed');
+
+const upward=sample(45,900000,0.7);
+const downward=sample(45,900000,-0.7);
+const threeUp=multiTimeframe([{timeframe:'15m',rows:upward},{timeframe:'1h',rows:upward},{timeframe:'1d',rows:upward}]);
+assert.equal(threeUp.direction,'UP');
+assert.equal(threeUp.total,3);
+assert.equal(threeUp.agreement,1);
+const conflict=multiTimeframe([{timeframe:'15m',rows:upward},{timeframe:'1h',rows:upward},{timeframe:'1d',rows:downward}]);
+assert.equal(conflict.direction,'WAIT');
+const insufficient=multiTimeframe([{timeframe:'15m',rows:upward},{timeframe:'1h',rows:upward.slice(0,20)},{timeframe:'1d',rows:upward}]);
+assert.equal(insufficient.direction,'WAIT');
+assert.throws(()=>multiTimeframe([{timeframe:'15m',rows:upward},{timeframe:'1h',rows:[upward[1],upward[0]]}]),/unique, and increasing/);
+console.log('Three-timeframe consensus, conflict and incomplete-history checks passed');
