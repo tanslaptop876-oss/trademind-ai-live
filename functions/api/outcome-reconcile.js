@@ -25,6 +25,21 @@ export async function onRequestPost({request,env}){
       !Number.isFinite(payload.feeBps)||payload.feeBps<0||payload.feeBps>500)
       throw Error('Invalid reconciliation request');
   }catch(error){return json({error:String(error.message||error)},400)}
+  // An outcome is immutable once stored. Do not silently reuse it for a different
+  // horizon or cost assumption (first-evaluation policy in migration 0002).
+  try{
+    const previous=await env.SIGNAL_DB.prepare(
+      'SELECT evaluation_version,horizon_bars,fee_bps FROM signal_outcomes WHERE event_key=? LIMIT 1'
+    ).bind(payload.eventKey).first();
+    if(previous){
+      const same=previous.evaluation_version==='forward_contiguous_v2'&&
+        previous.horizon_bars===payload.horizon&&previous.fee_bps===payload.feeBps;
+      return same?json({status:'EVALUATED',saved:false,duplicate:true,eventKey:payload.eventKey,
+        noOrders:true,verification:'HISTORICAL_PROVIDER_DATA_NOT_AUDITED'},200):
+        json({error:'Existing outcome uses a different horizon, fee assumption or evaluation version',
+          eventKey:payload.eventKey,noOrders:true},409);
+    }
+  }catch{return json({error:'Outcome table unavailable; verify migration 0002'},503)}
   const url=new URL('https://trademind.internal/api/outcome-preview');
   url.searchParams.set('event_key',payload.eventKey);
   url.searchParams.set('horizon',String(payload.horizon));
@@ -51,6 +66,15 @@ export async function onRequestPost({request,env}){
       evaluation.exitAt,evaluation.entryOpen,evaluation.exitClose,evaluation.grossReturn,
       evaluation.feeBps,evaluation.netReturn,evaluation.outcome,new Date().toISOString(),
       'HISTORICAL_PROVIDER_DATA_NOT_AUDITED').run();
+    if(!result.meta?.changes){
+      // Concurrent callers may have inserted a result after our initial lookup.
+      const current=await env.SIGNAL_DB.prepare(
+        'SELECT evaluation_version,horizon_bars,fee_bps FROM signal_outcomes WHERE event_key=? LIMIT 1'
+      ).bind(payload.eventKey).first();
+      if(!current||current.evaluation_version!==evaluation.evaluationVersion||
+        current.horizon_bars!==evaluation.horizonBars||current.fee_bps!==evaluation.feeBps)
+        return json({error:'Outcome policy conflict or unresolved concurrent insert',noOrders:true},409);
+    }
     return json({status:'EVALUATED',saved:!!result.meta?.changes,duplicate:!result.meta?.changes,
       eventKey:payload.eventKey,verification:'HISTORICAL_PROVIDER_DATA_NOT_AUDITED',noOrders:true},
       result.meta?.changes?201:200);
