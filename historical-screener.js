@@ -91,15 +91,16 @@ $('runExtended').addEventListener('click',()=>{
   if(!entries.length){status.textContent='Load CSV/demo or broker data first.';output.innerHTML='<tr><td colspan="5">No data loaded.</td></tr>';return}
   const extension=window.TradeMindScannerExtensions;
   if(!extension){status.textContent='Scanner extension unavailable.';return}
-  const interval=source==='BROKER DATA'?$('liveInterval').value:'CSV (interval unverified)';
+  const hasBrokerSource=source==='BROKER DATA'||source==='STALE BROKER DATA';
+  const interval=hasBrokerSource?$('liveInterval').value:'CSV (interval unverified)';
   const mapped={'1min':'1m','5min':'5m','15min':'15m','30min':'30m','60min':'1h','daily':'1d','weekly':'1w','monthly':'1mo'};
-  const timeframe=source==='BROKER DATA'?mapped[interval]:(entries.every(e=>e.rows.every(r=>/^\d{4}-\d{2}-\d{2}$/.test(r.date)))?'1d':null);
+  const timeframe=hasBrokerSource?mapped[interval]:(entries.every(e=>e.rows.every(r=>/^\d{4}-\d{2}-\d{2}$/.test(r.date)))?'1d':null);
   let complete=0,failures=0;
   output.innerHTML=entries.map(entry=>{
     try{
       const rows=entry.rows.map(r=>({timestamp:r.date,open:r.open,high:r.high,low:r.low,close:r.close,volume:r.volume,complete:true}));
       // Broker response has no explicit bar-completion flag: drop the latest bar.
-      if(source==='BROKER DATA')rows.pop();
+      if(source==='BROKER DATA'||source==='STALE BROKER DATA')rows.pop();
       const trend=timeframe?extension.multiTimeframe([{timeframe,rows}]).timeframes[0]:{direction:'WAIT',reason:'Unknown CSV interval'};
       const result=extension.breakout(rows);
       complete++;
@@ -107,6 +108,6 @@ $('runExtended').addEventListener('click',()=>{
       return '<tr><td><b>'+escape(entry.symbol)+'</b></td><td>'+escape(trend.direction)+'<small>One input series only</small></td><td>'+escape(result.candidate||'WAIT')+'<small>Confirmed: '+escape(result.direction)+'</small></td><td>'+escape(ratio)+'</td><td>'+ (Number.isFinite(result.support)?result.support.toFixed(2):'—')+' / '+(Number.isFinite(result.resistance)?result.resistance.toFixed(2):'—')+'</td></tr>';
     }catch(error){failures++;return '<tr><td>'+escape(entry.symbol)+'</td><td colspan="4">'+escape(error.message)+'</td></tr>'}
   }).join('');
-  status.textContent=complete+' analyzed, '+failures+' unavailable. Input: '+interval+'. '+(source!=='BROKER DATA'?'Date-only CSV is assumed daily; verify interval. ':'')+'Research-only rule signals; no trained prediction or broker orders.';
+  status.textContent=complete+' analyzed, '+failures+' unavailable. Input: '+interval+'. '+(!hasBrokerSource?'Date-only CSV is assumed daily; verify interval. ':source==='STALE BROKER DATA'?'Broker data is stale; research only. ':'')+'Research-only rule signals; no trained prediction or broker orders.';
 });
 })();
