@@ -14,7 +14,13 @@ const assert=require('node:assert/strict'),fs=require('node:fs');
   const observation={event_key:'crypto-btc-test',symbol:'BTCUSDT',market:'CRYPTO',timeframe:'15m',source:'COINDCX',signal:'BUY',candle_at:new Date(initial.time).toISOString(),candle_close:initial.close,observed_at:new Date().toISOString()};
   const writes=new Map(),counts={read:0,write:0,fetch:0};
   const db={prepare(sql){return {bind(...params){return {
-    async first(){assert.match(sql,/SELECT/);counts.read++;return observation},
+    async first(){assert.match(sql,/SELECT/);counts.read++;
+      if(sql.includes('FROM signal_outcomes')){
+        const stored=writes.get(params[0]);return stored?{evaluation_version:stored[1],horizon_bars:stored[2],fee_bps:stored[8]}:null;
+      }
+      assert.match(sql,/FROM signal_observations/);
+      return observation;
+    },
     async run(){assert.match(sql,/INSERT OR IGNORE/);counts.write++;
       const key=params[0];if(writes.has(key))return {meta:{changes:0}};
       writes.set(key,params);return {meta:{changes:1}};
@@ -33,6 +39,12 @@ const assert=require('node:assert/strict'),fs=require('node:fs');
     const first=await onRequestPost({request:make(payload),env}),a=await first.json();
     assert.equal(first.status,201,JSON.stringify(a));assert.equal(a.saved,true);assert.equal(a.noOrders,true);
     assert.equal(a.verification,'HISTORICAL_PROVIDER_DATA_NOT_AUDITED');assert.equal(writes.size,1);
+    const conflict=await onRequestPost({request:make({...payload,horizon:4}),env});
+    assert.equal(conflict.status,409);
+    assert.match((await conflict.json()).error,/different horizon/);
+    const alteredFee=await onRequestPost({request:make({...payload,feeBps:20}),env});
+    assert.equal(alteredFee.status,409);
+    assert.equal(writes.size,1);
     const dup=await onRequestPost({request:make(payload),env}),b=await dup.json();
     assert.equal(dup.status,200);assert.equal(b.duplicate,true);assert.equal(writes.size,1);
     observation.candle_close=3;
