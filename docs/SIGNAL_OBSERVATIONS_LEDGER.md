@@ -86,3 +86,11 @@ The reconciliation route reads the existing stored result before previewing new 
 `tests/deployment-readiness.py` uses an in-memory SQLite database (the relational SQL dialect underlying D1) to execute migrations 0001 and 0002 twice, validate unique event keys, foreign-key enforcement, and reject invalid signal values. It also parses the research dashboard to detect duplicate HTML IDs, missing JS assets, incorrect script ordering, and JS references to missing controls. GitHub Actions invokes this script as part of the scanner CI.
 
 Passing these tests **does not** prove Cloudflare D1 production compatibility, Pages bindings, authentication configuration, browser interactions, live broker credentials, or market-data availability. Live deployment should remain blocked until an isolated preview environment is configured and tested end-to-end.
+
+## Isolated browser smoke QA (development-only)
+
+`tests/browser-smoke.cjs` uses Playwright Chromium with a local static HTTP server and mocked read-only CoinDCX candle responses. `.github/workflows/browser-smoke.yml` runs it on supported Ubuntu 24.04 in GitHub Actions.
+
+The test exercises: initial NO DATA label, loading synthetic demo instruments, signal rows, breakout research, retrospective outcome journal, clear/reset, public crypto candle UI, 15m/1h/daily crypto trend comparison and Breeze's missing-access-code guard. Any page script error or unexpected API request fails the test.
+
+This is **not** a production browser test: public crypto responses are simulated in the browser QA, independent of the separate real-network provider smoke workflow. It does not connect ICICI Breeze, validate Cloudflare Pages/D1 bindings, check actual mobile devices, or confirm real-time model accuracy. No broker execution endpoints are used.
