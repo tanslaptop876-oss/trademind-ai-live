@@ -29,5 +29,7 @@ jobs:
         run: node tests/market-data-breeze.cjs
       - name: Public CoinDCX and FX mocked adapters
         run: node tests/market-data-free.cjs
+      - name: Historical signal outcome journal
+        run: node tests/signal-journal.cjs
       - name: Syntax check research UI
         run: node --check historical-screener.js
