@@ -47,13 +47,16 @@ const assert=require('node:assert/strict'),fs=require('node:fs');
     assert.equal(writes.size,1);
     const dup=await onRequestPost({request:make(payload),env}),b=await dup.json();
     assert.equal(dup.status,200);assert.equal(b.duplicate,true);assert.equal(writes.size,1);
+    // Use an unpersisted event to test PENDING and SKIPPED behavior independently
+    // of the intentionally immutable saved outcome.
+    writes.clear();
     observation.candle_close=3;
     const pending=await onRequestPost({request:make(payload),env}),p=await pending.json();
-    assert.equal(pending.status,'PENDING'===p.status?200:pending.status);assert.equal(p.status,'PENDING');
-    assert.equal(writes.size,1);
+    assert.equal(pending.status,200);assert.equal(p.status,'PENDING');
+    assert.equal(writes.size,0);
     observation.candle_close=initial.close;observation.signal='WAIT';
     const skip=await (await onRequestPost({request:make(payload),env})).json();
-    assert.equal(skip.status,'SKIPPED');assert.equal(writes.size,1);
+    assert.equal(skip.status,'SKIPPED');assert.equal(writes.size,0);
     assert.equal((await onRequestPost({request:make(payload),env:{SIGNAL_LOG_TOKEN:token}})).status,503);
     console.log('Trusted outcome reconciliation auth, D1 insert dedupe, pending and skip passed');
   }finally{global.fetch=original}
