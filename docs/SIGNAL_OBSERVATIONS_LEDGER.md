@@ -40,3 +40,11 @@ For each observation, the evaluator requires:
 Results are `PENDING` where candles are missing, contradictory or still forming, and `SKIPPED` for WAIT. Only completed horizons produce `EVALUATED`. Every evaluated result is labelled `HISTORICAL_PROVIDER_DATA_NOT_AUDITED` and `executable:false`. The evaluator does **not** yet cross-check exchange sessions, holiday calendars, corporate actions, interval gaps, or broker fills.
 
 **Important:** The migration and pure evaluator are code only. They have not been applied or connected to a scheduler, trusted market-data fetch, D1 write path or production browser. There is no automatic future scoring yet. Future reconciliation must fetch trusted licensed candles server-side and avoid using client-provided closing prices to claim independent verification.
+
+## Forward outcome data-integrity gate (v2)
+
+`signal-forward-outcomes.js` now requires the evaluator to be called with explicit `market` and `timeframe` settings. Supported reconciliation is deliberately limited to `CRYPTO`, `NSE`, or `BSE` with 1m, 3m, 5m, 15m, 30m or 1h source bars. All candle timestamps from the observed bar through the entire forward horizon must be exactly one expected interval apart. NSE/BSE bars must also fall within **one** regular weekday session between 09:15 and 15:30 IST. These are safety restrictions, **not** a full exchange holiday/calendar verification.
+
+Any missing bar, unsupported timeframe, overnight crossing, or unknown source quality leads to `PENDING`, not WIN or LOSS. Daily/weekly/monthly reconciliation is intentionally disabled until exchange calendars and expected session dates are implemented. Even an `EVALUATED` result uses provider-returned historical candles and is **not audited exchange truth**.
+
+This remains a pure-function evaluator plus an unexecuted D1 schema. There is no background job, no database write of evaluated outcomes, no broker trade, and no verified production data source enabled by this change.
