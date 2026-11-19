@@ -66,3 +66,13 @@ Request: `GET /api/outcome-preview?event_key=<encoded_event_key>&horizon=5&fee_b
 This is **not independently verified exchange history**, a production accuracy statistic, a scheduled job, or a proven live prediction service. A shared admin secret is still not safe for an untrusted multi-tenant public application. Verify public exchange API availability, license/rate limits, D1 binding, route security, and actual browser behavior before deployment.
 
 Tests: `node tests/outcome-preview.cjs`, included in GitHub Actions. Its CoinDCX response and database are mocked.
+
+## Admin-only D1 reconciliation write route (development only)
+
+`POST /api/outcome-reconcile` accepts a JSON object like `{"eventKey":"CRYPTO|BTCUSDT|15m|COINDCX|...","horizon":5,"feeBps":10}` with the server-only `x-signal-log-token` header. It requires the `SIGNAL_DB` binding, both D1 migrations, and a stored CoinDCX crypto observation. **Do not send this token from a browser or expose the route to untrusted clients.**
+
+The route calls `/api/outcome-preview` programmatically; preview itself independently fetches public CoinDCX candles on the server and applies the closed-candle, interval-contiguity and no-lookahead checks. If the result is `PENDING` or `SKIPPED`, **no database write occurs**. If it is `EVALUATED`, the route stores one row per event with `INSERT OR IGNORE`, retaining the `HISTORICAL_PROVIDER_DATA_NOT_AUDITED` label; duplicate requests cannot overwrite the first result. This route does not schedule itself, accept client-supplied future prices, or create a broker order.
+
+Important production restrictions: the current database uniqueness is one outcome per event, so the first successful evaluation permanently fixes horizon and fee assumptions; to support multiple official evaluation policies, version the event/evaluation key or make policy immutable before launch. A client-reported observation is not independently authenticated. Historical provider responses can be revised, and real fills, charges and liquidity are not modelled. This code needs real upstream smoke tests, Cloudflare Pages/D1 integration tests, identity/rate limiting, and an audited retention policy before public deployment.
+
+Mocked tests: `node tests/outcome-reconcile.cjs`, run by the development branch CI. No actual D1 database or production API was modified during development.
