@@ -1,0 +1,32 @@
+name: TradeMind browser smoke QA
+on:
+  push:
+    branches:
+      - feature/scanner-phase1-mtf-breakout
+    paths:
+      - 'historical-screener.html'
+      - 'historical-screener.js'
+      - 'historical-screener.css'
+      - 'screener-engine.js'
+      - 'scanner-extensions.js'
+      - 'signal-journal.js'
+      - 'tests/browser-smoke.cjs'
+      - '.github/workflows/browser-smoke.yml'
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  browser:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Install isolated Playwright test dependency
+        run: npm install --no-save --no-package-lock playwright@1.56.1
+      - name: Install Chromium browser and runtime dependencies
+        run: npx playwright install --with-deps chromium
+      - name: Execute browser smoke tests with mocked crypto candles
+        run: node tests/browser-smoke.cjs
