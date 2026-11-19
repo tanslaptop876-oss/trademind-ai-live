@@ -162,6 +162,31 @@ lastScan=Date.now();$('liveScan').disabled=true;$('liveBadge').textContent='LOAD
 try{for(const stock of stocks){const params=new URLSearchParams({symbol:stock.symbol,icici_code:stock.code,type:'stocks',mode,interval});try{const response=await fetch(`/api/market-data?${params}`,{headers:{accept:'application/json','x-market-access':access},cache:'no-store'}),data=await response.json();if(!response.ok)throw Error(data.error||`HTTP ${response.status}`);if(!Array.isArray(data.rows)||data.rows.length<35)throw Error('Too few candles');const rows=data.rows.map(r=>({date:String(r.date),open:Number(r.open),high:Number(r.high),low:Number(r.low),close:Number(r.close),volume:Number(r.volume)}));if(rows.some(r=>!Number.isFinite(r.close)||r.close<=0))throw Error('Invalid broker candles');loaded.push({symbol:stock.symbol,cap:'stock',rows});$('liveStatus').textContent=`Fetched ${loaded.length}/${stocks.length} · ${stock.symbol} as of ${data.asOf||rows.at(-1).date} · ${data.delay||'provider delay unknown'}`}catch(error){failures.push(`${stock.symbol}: ${error.message}`)}}
 if(!loaded.length)throw Error(failures.join('; ')||'No broker data');entries=loaded;source='BROKER DATA';recalculate();renderSignals();$('sourceTag').textContent=`BROKER DATA · ${interval}`;$('liveBadge').textContent=failures.length?'PARTIAL BROKER DATA':'BROKER DATA';$('status').textContent=`${loaded.length} stock(s) loaded from broker candles; ${results.filter(x=>!x.error).length} have enough history.`;$('liveStatus').textContent=`${interval} · refreshed ${new Date().toLocaleTimeString()} · last candle ${loaded.map(x=>`${x.symbol} ${x.rows.at(-1).date}`).join(', ')}. ${failures.length?`Unavailable: ${failures.join('; ')}`:'Broker or exchange delay may apply.'}`
 }catch(error){if(source==='BROKER DATA'){source='STALE BROKER DATA';renderSignals()}$('liveBadge').textContent='NOT CONNECTED';$('liveStatus').textContent=`Live scan unavailable: ${error.message}. Previous results are not live. Demo and CSV remain available.`}finally{$('liveScan').disabled=false}}
+$('runSignalJournal').onclick=()=>{
+  const output=$('journalResults'),status=$('journalStatus');
+  const horizon=Number($('journalHorizon').value),feeBps=Number($('journalCostBps').value);
+  if(!entries.length){status.textContent='Load candles first.';return}
+  try{
+    if(!Number.isFinite(feeBps)||feeBps<0||feeBps>500)throw Error('Costs must be between 0 and 500 bps');
+    const chosen=selected();
+    if(chosen.length<2)throw Error('At least two indicators are needed');
+    const broker=source==='BROKER DATA',crypto=source==='PUBLIC CRYPTO';
+    const evaluations=entries.map(e=>{
+      // The last source bar may be unfinished. CoinDCX was already trimmed.
+      const data=(broker?e.rows.slice(0,-1):e.rows).map(r=>({...r}));
+      return window.TradeMindSignalJournal.evaluate({...e,rows:data},{horizon,feeBps,indicators:chosen});
+    });
+    output.innerHTML=evaluations.map(x=>'<tr><td>'+escape(x.symbol)+'</td><td>'+x.samples+'</td><td>'+
+      x.wins+' / '+x.losses+' / '+x.flats+'</td><td>'+
+      (x.winRate===null?'Not enough outcomes':(x.winRate*100).toFixed(1)+'%')+
+      '</td><td>Next-bar entry · '+horizon+' candle horizon · '+feeBps+' bps</td></tr>').join('');
+    status.textContent='Evaluated '+evaluations.length+' instrument(s). '+(broker?'Broker historical candles':crypto?'Public crypto history':'Imported/demo history')+
+      '. Results are retrospective and not live predictions; no orders placed.';
+  }catch(error){
+    output.innerHTML='<tr><td colspan="5">'+escape(String(error.message||error))+'</td></tr>';
+    status.textContent='Historical evaluation unavailable.';
+  }
+};
 $('cryptoScan').onclick=scanCrypto;
 $('runCryptoMtf').onclick=scanCryptoMtf;
 $('runNseMtf').onclick=scanNseMtf;
