@@ -30,6 +30,54 @@ function renderSignals(){
   }).join('');
 }
 function load(text,label){try{entries=engine.parse(text);source=label;recalculate();$('sourceTag').textContent=label;$('status').textContent=`Loaded ${entries.length} symbols; ${results.filter(x=>!x.error).length} have enough history. ${label==='DEMO DATA'?'All example prices are synthetic.':'CSV stays in this browser session.'}`;if(label!=='BROKER DATA')$('liveBadge').textContent='NOT CONNECTED';renderSignals()}catch(error){$('status').textContent=error.message;entries=[];results=[];render();renderSignals()}}
+// Multi-timeframe public crypto research: fetch each interval independently.
+// No inferred candles, no synthetic signals, no trading execution.
+async function scanCryptoMtf(){
+  const button=$('runCryptoMtf'),status=$('cryptoMtfStatus'),output=$('cryptoMtfResults');
+  const symbol=$('cryptoSymbol').value,intervalLabels=[['15min','15m'],['60min','1h'],['daily','1d']];
+  button.disabled=true;
+  status.textContent='Fetching independently sourced 15m, 1h and daily public candles…';
+  const checked=[];
+  try{
+    // Sequential requests avoid unnecessarily stressing unauthenticated upstream endpoints.
+    for(const [interval,timeframe] of intervalLabels){
+      const params=new URLSearchParams({symbol,type:'crypto',mode:'live',interval});
+      const response=await fetch('/api/market-data?'+params,{cache:'no-store',headers:{accept:'application/json'}});
+      const data=await response.json();
+      if(!response.ok||data.source!=='CoinDCX public spot candles'||!Array.isArray(data.rows))
+        throw Error(interval+': '+String(data.error||'CoinDCX candle data unavailable'));
+      if(data.rows.length<27)throw Error(interval+': insufficient history');
+      const rows=data.rows.map(r=>({
+        timestamp:String(r.date||''),open:r.open,high:r.high,low:r.low,close:r.close,
+        volume:r.volume,complete:true
+      }));
+      // Validate the entire received series, including the possibly forming last bar.
+      const verified=window.TradeMindScannerExtensions.verified(rows);
+      const latest=verified.at(-1).timestamp;
+      const lastAge=Date.now()-Date.parse(latest);
+      const maxAge={'15min':2*3600000,'60min':6*3600000,'daily':72*3600000}[interval];
+      if(lastAge < -3600000 ||lastAge>maxAge)
+        throw Error(interval+': source candles are stale or timestamp is in the future');
+      const closed=verified.slice(0,-1);
+      if(closed.length<26)throw Error(interval+': fewer than 26 confirmed candidate bars');
+      checked.push({timeframe,rows:closed});
+    }
+    if(symbol!==$('cryptoSymbol').value)throw Error('Selected pair changed during request');
+    const result=window.TradeMindScannerExtensions.multiTimeframe(checked);
+    const labels=result.timeframes.map(x=>x.direction);
+    const combined=result.direction==='UP'?'BUY':result.direction==='DOWN'?'SELL':'WAIT';
+    // Only write predetermined signal labels / numeric data from validated scanner.
+    output.innerHTML='<tr><td>'+escape(symbol)+'</td>'
+      +labels.map(x=>'<td>'+escape(x)+'</td>').join('')
+      +'<td><strong>'+combined+'</strong></td><td>'+result.up+'/'+result.total+' upward, '
+      +result.down+'/'+result.total+' downward; all 3 must agree</td></tr>';
+    status.textContent=symbol+' · three independently fetched source intervals · '+combined
+      +' (rule-based only). Last-bar exclusion used. No execution or calibrated probability.';
+  }catch(error){
+    output.innerHTML='<tr><td>'+escape(symbol)+'</td><td colspan="4">WAIT</td><td>'+escape(String(error.message||error))+'</td></tr>';
+    status.textContent='Cannot confirm all timeframes: '+String(error.message||error)+'. Combined signal set to WAIT.';
+  }finally{button.disabled=false}
+}
 // Public read-only crypto research. Discard last upstream bar until completion can be established.
 async function scanCrypto(){
   const button=$('cryptoScan'),status=$('cryptoStatus'),badge=$('cryptoBadge');
@@ -73,6 +121,7 @@ try{for(const stock of stocks){const params=new URLSearchParams({symbol:stock.sy
 if(!loaded.length)throw Error(failures.join('; ')||'No broker data');entries=loaded;source='BROKER DATA';recalculate();renderSignals();$('sourceTag').textContent=`BROKER DATA · ${interval}`;$('liveBadge').textContent=failures.length?'PARTIAL BROKER DATA':'BROKER DATA';$('status').textContent=`${loaded.length} stock(s) loaded from broker candles; ${results.filter(x=>!x.error).length} have enough history.`;$('liveStatus').textContent=`${interval} · refreshed ${new Date().toLocaleTimeString()} · last candle ${loaded.map(x=>`${x.symbol} ${x.rows.at(-1).date}`).join(', ')}. ${failures.length?`Unavailable: ${failures.join('; ')}`:'Broker or exchange delay may apply.'}`
 }catch(error){if(source==='BROKER DATA'){source='STALE BROKER DATA';renderSignals()}$('liveBadge').textContent='NOT CONNECTED';$('liveStatus').textContent=`Live scan unavailable: ${error.message}. Previous results are not live. Demo and CSV remain available.`}finally{$('liveScan').disabled=false}}
 $('cryptoScan').onclick=scanCrypto;
+$('runCryptoMtf').onclick=scanCryptoMtf;
 $('csvFile').addEventListener('change',async event=>{const file=event.target.files[0];if(!file)return;if(file.size>15_000_000){$('status').textContent='CSV exceeds 15 MB';return}load(await file.text(),'IMPORTED CSV')});$('demo').onclick=()=>load(csv,'DEMO DATA');$('clear').onclick=()=>{entries=[];results=[];source='NO DATA';renderSignals();$('csvFile').value='';$('sourceTag').textContent=source;$('liveBadge').textContent='NOT CONNECTED';$('status').textContent='Cleared. Your imported CSV is processed in this browser.';render()};$('liveScan').onclick=scanLive;['cap','direction','sort'].forEach(id=>$(id).onchange=render);document.querySelectorAll('[data-indicator]').forEach(x=>x.onchange=recalculate);
 window.TradeMindResearchData=()=>({entries,source});
 
