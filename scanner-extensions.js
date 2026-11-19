@@ -21,27 +21,33 @@
       return bar;
     });
   }
-  function aggregate(rows,source,target,sessionOffsetMinutes=330){
+  function aggregate(rows,source,target,sessionOffsetMinutes=330,sessionOpenMinute=555){
     if(!allowed.has(source)||!allowed.has(target))throw Error('Unsupported timeframe');
-    const raw=verified(rows).filter(x=>x.complete);
-    if(!raw.length)return [];
     const sourceM=minutes[source],targetM=minutes[target];
     if(!sourceM||!targetM||targetM<sourceM||targetM%sourceM)throw Error('Only integer intraday multiples can be aggregated');
     if(!Number.isInteger(sessionOffsetMinutes)||Math.abs(sessionOffsetMinutes)>840)throw Error('Invalid session offset');
-    const result=[];
+    if(!Number.isInteger(sessionOpenMinute)||sessionOpenMinute<0||sessionOpenMinute>=1440)throw Error('Invalid session open minute');
+    const raw=verified(rows).filter(x=>x.complete);
+    if(!raw.length)return [];
+    const result=[],expected=targetM/sourceM,sourceMillis=sourceM*60000;
     for(const r of raw){
-      const local=Date.parse(r.timestamp)+sessionOffsetMinutes*60000;
-      const day=Math.floor(local/86400000);
-      const mins=Math.floor((local-day*86400000)/60000);
-      const bucket=day*86400000+Math.floor(mins/targetM)*targetM*60000-sessionOffsetMinutes*60000;
-      const key=new Date(bucket).toISOString(),prev=result.at(-1);
+      const millis=Date.parse(r.timestamp),local=millis+sessionOffsetMinutes*60000;
+      const day=Math.floor(local/86400000),minute=Math.floor((local-day*86400000)/60000);
+      // Never blend bars across exchanges' trading-day boundaries or a different session.
+      if(minute<sessionOpenMinute||(minute-sessionOpenMinute)%sourceM)continue;
+      const bucketMinute=sessionOpenMinute+Math.floor((minute-sessionOpenMinute)/targetM)*targetM;
+      const bucketStamp=day*86400000+bucketMinute*60000-sessionOffsetMinutes*60000;
+      const key=new Date(bucketStamp).toISOString(),prev=result.at(-1);
       if(prev&&prev.timestamp===key){
+        // A missing middle bar must not become an apparently closed aggregate.
+        if(millis!==prev.lastMillis+sourceMillis)prev.contiguous=false;
         prev.high=Math.max(prev.high,r.high);prev.low=Math.min(prev.low,r.low);prev.close=r.close;
-        prev.volume=prev.volume===null||r.volume===null?null:prev.volume+r.volume;prev.count++;
-      }else result.push({...r,timestamp:key,count:1});
+        prev.volume=prev.volume===null||r.volume===null?null:prev.volume+r.volume;
+        prev.lastMillis=millis;prev.count++;
+      }else result.push({...r,timestamp:key,count:1,lastMillis:millis,contiguous:millis===bucketStamp});
     }
-    // Do not treat an incomplete bucket as an observed closed target bar.
-    return result.filter(x=>x.count===targetM/sourceM).map(({count,...rest})=>rest);
+    return result.filter(x=>x.contiguous&&x.count===expected)
+      .map(({count,lastMillis,contiguous,...rest})=>rest);
   }
   function multiTimeframe(series){
     if(!Array.isArray(series)||!series.length)throw Error('Provide timeframe series');
