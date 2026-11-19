@@ -33,5 +33,7 @@ jobs:
         run: node tests/signal-journal.cjs
       - name: Authenticated signal observations API
         run: node tests/signal-observations.cjs
+      - name: Forward signal outcome reconciliation
+        run: node tests/signal-forward-outcomes.cjs
       - name: Syntax check research UI
         run: node --check historical-screener.js
