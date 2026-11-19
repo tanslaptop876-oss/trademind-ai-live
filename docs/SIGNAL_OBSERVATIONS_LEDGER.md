@@ -26,3 +26,17 @@ The SQL migration and API are written but **database binding, migration executio
 The current POST takes client-provided OHLC close and direction, which can be fabricated by any holder of the shared secret. Do not advertise its records as audited, official real-time, or proof of trading performance. Future phases: signed exchange feed identifiers, server-side signal generation, trusted clock/watermarks, tenant scoping, true outcome reconciliation, privacy and retention policy.
 
 Tests: `node tests/signal-observations.cjs` (mock D1, auth and dedupe). Cloudflare deployment integration must be tested separately.
+
+## Planned forward reconciliation (development only)
+
+Migration `migrations/0002_signal_outcomes.sql` defines a **separate** table for calculated forward outcomes, leaving the initial `signal_observations` table immutable. The pure evaluator is in `signal-forward-outcomes.js`, with tests in `tests/signal-forward-outcomes.cjs`.
+
+For each observation, the evaluator requires:
+- Original signal candle timestamp and matching OHLC close to exist in the supplied, sorted candle history
+- The signal candle and all subsequent horizon candles explicitly marked `complete:true`
+- At least `horizonBars` future candles, so entry occurs at the **next** candle open and measurement ends at the horizon-th candle close
+- Configurable illustrative round-trip cost in bps; a BUY/SELL directional result is not a simulated fill
+
+Results are `PENDING` where candles are missing, contradictory or still forming, and `SKIPPED` for WAIT. Only completed horizons produce `EVALUATED`. Every evaluated result is labelled `HISTORICAL_PROVIDER_DATA_NOT_AUDITED` and `executable:false`. The evaluator does **not** yet cross-check exchange sessions, holiday calendars, corporate actions, interval gaps, or broker fills.
+
+**Important:** The migration and pure evaluator are code only. They have not been applied or connected to a scheduler, trusted market-data fetch, D1 write path or production browser. There is no automatic future scoring yet. Future reconciliation must fetch trusted licensed candles server-side and avoid using client-provided closing prices to claim independent verification.
