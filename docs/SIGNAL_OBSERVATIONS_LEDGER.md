@@ -80,3 +80,9 @@ Mocked tests: `node tests/outcome-reconcile.cjs`, run by the development branch 
 ## Outcome policy conflict protection
 
 The reconciliation route reads the existing stored result before previewing new source candles. An existing event with the same `forward_contiguous_v2` version, `horizon` and `feeBps` is returned as an unchanged duplicate. An existing event with different evaluation settings returns HTTP `409 Conflict`; the first saved outcome is not overwritten. The route also checks the stored policy after an `INSERT OR IGNORE` loses a concurrent insert race. New evaluations with different policies for the same signal will require a versioned outcome key in a future schema; do not treat the first-run policy as independently audited. Tests are mocked; live D1 race behavior remains unverified.
+
+## Pre-deployment migration and dashboard checks
+
+`tests/deployment-readiness.py` uses an in-memory SQLite database (the relational SQL dialect underlying D1) to execute migrations 0001 and 0002 twice, validate unique event keys, foreign-key enforcement, and reject invalid signal values. It also parses the research dashboard to detect duplicate HTML IDs, missing JS assets, incorrect script ordering, and JS references to missing controls. GitHub Actions invokes this script as part of the scanner CI.
+
+Passing these tests **does not** prove Cloudflare D1 production compatibility, Pages bindings, authentication configuration, browser interactions, live broker credentials, or market-data availability. Live deployment should remain blocked until an isolated preview environment is configured and tested end-to-end.
