@@ -1,0 +1,26 @@
+const assert=require('node:assert/strict');
+const {evaluate}=require('../signal-forward-outcomes.js');
+const start=Date.parse('2026-11-19T03:45:00Z');
+const bars=Array.from({length:9},(_,i)=>({date:new Date(start+i*15*60000).toISOString(),
+  open:100+i,high:102+i,low:99+i,close:101+i,complete:true}));
+const observation={signal:'BUY',candle_at:bars[2].date,candle_close:bars[2].close};
+const result=evaluate(observation,bars,{horizonBars:3,feeBps:10});
+assert.equal(result.status,'EVALUATED');
+assert.equal(result.entryAt,bars[3].date);
+assert.equal(result.exitAt,bars[5].date);
+assert.equal(result.entryOpen,bars[3].open);
+assert.equal(result.exitClose,bars[5].close);
+assert.equal(result.outcome,'WIN');
+assert.equal(result.executable,false);
+assert.equal(result.verification,'HISTORICAL_PROVIDER_DATA_NOT_AUDITED');
+const sell=evaluate({...observation,signal:'SELL'},bars,{horizonBars:3});
+assert.equal(sell.outcome,'LOSS');
+assert.equal(evaluate({...observation,signal:'WAIT'},bars).status,'SKIPPED');
+assert.equal(evaluate(observation,bars.slice(0,5),{horizonBars:3}).status,'PENDING');
+assert.equal(evaluate(observation,bars.map((b,i)=>i===4?{...b,complete:false}:b),{horizonBars:3}).status,'PENDING');
+assert.equal(evaluate({...observation,candle_close:10},bars).status,'PENDING');
+assert.equal(evaluate({...observation,candle_at:'2020-01-01T00:00:00Z'},bars).status,'PENDING');
+assert.throws(()=>evaluate(observation,[bars[1],bars[0]]),/increase/);
+assert.throws(()=>evaluate(observation,bars,{horizonBars:0}),/Invalid outcome settings/);
+assert.ok(evaluate(observation,bars,{horizonBars:3,feeBps:200}).netReturn<result.netReturn);
+console.log('Forward signal outcomes next-bar, horizon, pending and no-execution checks passed');
