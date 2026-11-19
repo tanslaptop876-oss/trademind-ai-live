@@ -2,7 +2,7 @@
  * Evaluates an existing observation using subsequently available closed candles.
  * Does not execute, infer fills, or independently authenticate provider data. */
 (function(root){'use strict';
-  function evaluate(observation,candles,{horizonBars=5,feeBps=10}={}){
+  function evaluate(observation,candles,{horizonBars=5,feeBps=10,market=null,timeframe=null}={}){
     if(!observation||typeof observation!=='object'||!Array.isArray(candles))
       throw Error('Observation and candle history required');
     if(!Number.isInteger(horizonBars)||horizonBars<1||horizonBars>100||
@@ -36,12 +36,34 @@
     if(forward.some(r=>!r.complete))return {status:'PENDING',reason:'Forward candles are not all closed'};
     // Contiguity and exchange session gaps cannot be inferred from timestamps alone;
     // provider-specific interval/session quality checks remain a deployment prerequisite.
+    // Require explicit market and bar interval before scoring. Never let a missing
+    // intraday candle count as an elapsed trading bar.
+    const spans={'1m':60000,'3m':180000,'5m':300000,'15m':900000,'30m':1800000,'1h':3600000};
+    const span=spans[timeframe];
+    if(!['CRYPTO','NSE','BSE'].includes(market)||!span)
+      return {status:'PENDING',reason:'No supported market/interval continuity policy'};
+    const checked=[rows[at],...forward];
+    for(let i=1;i<checked.length;i++){
+      if(checked[i].time-checked[i-1].time!==span)
+        return {status:'PENDING',reason:'Missing or noncontiguous source candles'};
+    }
+    if(market==='NSE'||market==='BSE'){
+      // No holiday/auction/session calendar yet: intraday comparisons must
+      // remain within a single regular weekday session (09:15–15:30 IST).
+      const firstDay=new Date(checked[0].time+330*60000).toISOString().slice(0,10);
+      for(const r of checked){
+        const local=new Date(r.time+330*60000),minute=local.getUTCHours()*60+local.getUTCMinutes();
+        if(local.toISOString().slice(0,10)!==firstDay||local.getUTCDay()===0||local.getUTCDay()===6||
+           minute<555||minute>=930)
+          return {status:'PENDING',reason:'Session boundary or regular-market calendar not verified'};
+      }
+    }
     const entry=forward[0],exit=forward.at(-1);
     const grossReturn=observation.signal==='BUY'
       ?exit.close/entry.open-1
       :entry.open/exit.close-1;
     const netReturn=grossReturn-feeBps/10000;
-    return {status:'EVALUATED',evaluationVersion:'forward_close_v1',horizonBars,
+    return {status:'EVALUATED',evaluationVersion:'forward_contiguous_v2',horizonBars,
       entryAt:entry.date,exitAt:exit.date,entryOpen:entry.open,exitClose:exit.close,
       grossReturn,feeBps,netReturn,outcome:netReturn>0?'WIN':netReturn<0?'LOSS':'FLAT',
       verification:'HISTORICAL_PROVIDER_DATA_NOT_AUDITED',executable:false};
