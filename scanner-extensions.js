@@ -99,7 +99,31 @@
     const fresh=marketOpen&&age>=-span&&age<=2*span+300000;
     return {status:fresh?'RECENT':'STALE',fresh,ageMinutes:Math.round(age/60000),reason:fresh?'Recent broker candle; provider entitlement/delay unverified':marketOpen?'Last candle too old':'NSE trading session is not active'};
   }
-  const api={aggregate,multiTimeframe,breakout,verified,candleFreshness};
+  // Indicative ATR-based planning only. Entry is last *closed* candle close,
+  // not a fill or live executable price. Costs, gaps and slippage can exceed stop.
+  function planTrade(rows,direction,{atrWindow=14,stopAtr=1.5,targetR=2}={}){
+    if(!['UP','DOWN','WAIT'].includes(direction))throw Error('Invalid signal direction');
+    if(!Number.isInteger(atrWindow)||atrWindow<2||atrWindow>100||
+      !Number.isFinite(stopAtr)||stopAtr<=0||stopAtr>10||
+      !Number.isFinite(targetR)||targetR<1||targetR>10)throw Error('Invalid risk settings');
+    if(direction==='WAIT')return {status:'WAIT',reason:'No directional consensus',executable:false};
+    const bars=verified(rows).filter(x=>x.complete);
+    if(bars.length<atrWindow+1)return {status:'WAIT',reason:'Not enough closed candles for ATR',executable:false};
+    const recent=bars.slice(-atrWindow),prior=bars.at(-atrWindow-1),tr=[];
+    for(const r of recent){
+      tr.push(Math.max(r.high-r.low,Math.abs(r.high-prior.close),Math.abs(r.low-prior.close)));
+      prior=r;
+    }
+    const atr=tr.reduce((a,b)=>a+b,0)/atrWindow,entry=bars.at(-1).close;
+    const distance=stopAtr*atr;
+    if(!(atr>0)||!(distance>0))return {status:'WAIT',reason:'Zero volatility / ATR',executable:false};
+    const long=direction==='UP',stop=long?entry-distance:entry+distance,target=long?entry+distance*targetR:entry-distance*targetR;
+    if(stop<=0||target<=0)return {status:'WAIT',reason:'Unusable price levels',executable:false};
+    return {status:'PLAN',side:long?'LONG':'SHORT',entry,stop,target,atr,risk:distance,reward:distance*targetR,
+      rewardRisk:targetR,asOf:bars.at(-1).timestamp,executable:false,
+      caveat:'Indicative closed-candle levels; no orders, fills, slippage, leverage or fees modelled'};
+  }
+  const api={aggregate,multiTimeframe,breakout,verified,candleFreshness,planTrade};
   root.TradeMindScannerExtensions=api;
   if(typeof module!=='undefined'&&module.exports)module.exports=api;
 })(typeof window!=='undefined'?window:globalThis);
