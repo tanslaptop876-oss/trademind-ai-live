@@ -37,5 +37,7 @@ jobs:
         run: node tests/signal-forward-outcomes.cjs
       - name: Read-only outcome preview
         run: node tests/outcome-preview.cjs
+      - name: Server-side outcome reconciliation and D1 deduplication
+        run: node tests/outcome-reconcile.cjs
       - name: Syntax check research UI
         run: node --check historical-screener.js
