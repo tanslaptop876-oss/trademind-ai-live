@@ -31,5 +31,7 @@ jobs:
         run: node tests/market-data-free.cjs
       - name: Historical signal outcome journal
         run: node tests/signal-journal.cjs
+      - name: Authenticated signal observations API
+        run: node tests/signal-observations.cjs
       - name: Syntax check research UI
         run: node --check historical-screener.js
