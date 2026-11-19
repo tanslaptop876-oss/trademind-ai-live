@@ -33,6 +33,45 @@ function renderSignals(){
   }).join('');
 }
 function load(text,label){try{entries=engine.parse(text);source=label;recalculate();$('sourceTag').textContent=label;$('status').textContent=`Loaded ${entries.length} symbols; ${results.filter(x=>!x.error).length} have enough history. ${label==='DEMO DATA'?'All example prices are synthetic.':'CSV stays in this browser session.'}`;if(label!=='BROKER DATA')$('liveBadge').textContent='NOT CONNECTED';renderSignals()}catch(error){$('status').textContent=error.message;entries=[];results=[];render();renderSignals()}}
+// ICICI Breeze read-only multi-timeframe analysis; no order-placement code.
+async function scanNseMtf(){
+  const button=$('runNseMtf'),status=$('nseMtfStatus'),output=$('nseMtfResults');
+  button.disabled=true;
+  let stock;
+  try{
+    stock=watchlist($('liveSymbols').value)[0];
+    const access=$('marketAccess').value.trim();
+    if(!access)throw Error('TradeMind access code is required');
+    status.textContent='Fetching NSE 15m, 1H and Daily read-only candles…';
+    const feeds=[];
+    for(const [interval,timeframe] of [['15min','15m'],['60min','1h'],['daily','1d']]){
+      const params=new URLSearchParams({symbol:stock.symbol,icici_code:stock.code,type:'stocks',
+        mode:interval==='daily'?'eod':'live',interval});
+      const response=await fetch('/api/market-data?'+params,{cache:'no-store',
+        headers:{accept:'application/json','x-market-access':access}});
+      const data=await response.json();
+      if(!response.ok||data.source!=='ICICI Direct Breeze Historical V2'||!Array.isArray(data.rows))
+        throw Error(interval+': '+String(data.error||'Breeze candles unavailable'));
+      if(data.rows.length<27)throw Error(interval+': insufficient candles');
+      const rows=data.rows.map(r=>({timestamp:String(r.date||''),open:r.open,high:r.high,
+        low:r.low,close:r.close,volume:r.volume,complete:true}));
+      const valid=window.TradeMindScannerExtensions.verified(rows);
+      const closed=valid.slice(0,-1);
+      if(closed.length<26)throw Error(interval+': fewer than 26 closed candidate candles');
+      feeds.push({timeframe,rows:closed});
+    }
+    if(stock.symbol!==watchlist($('liveSymbols').value)[0].symbol)throw Error('Selected stock changed during fetch');
+    const result=window.TradeMindScannerExtensions.multiTimeframe(feeds);
+    const combined=result.direction==='UP'?'BUY':result.direction==='DOWN'?'SELL':'WAIT';
+    output.innerHTML='<tr><td>'+escape(stock.symbol)+'</td>'+
+      result.timeframes.map(item=>'<td>'+escape(item.direction)+'</td>').join('')+
+      '<td><strong>'+combined+'</strong></td><td>'+result.up+'/3 UP, '+result.down+'/3 DOWN; closed candles</td></tr>';
+    status.textContent=stock.symbol+' · '+combined+' (rule-based research). Breeze historical timestamps may be delayed; NOT confirmed real-time prediction. No orders.';
+  }catch(error){
+    output.innerHTML='<tr><td>'+escape(stock?.symbol||'NSE')+'</td><td colspan="4">WAIT</td><td>'+escape(String(error.message||error))+'</td></tr>';
+    status.textContent='NSE timeframe confirmation unavailable: '+String(error.message||error)+'. Signal WAIT.';
+  }finally{button.disabled=false}
+}
 // Multi-timeframe public crypto research: fetch each interval independently.
 // No inferred candles, no synthetic signals, no trading execution.
 async function scanCryptoMtf(){
@@ -125,6 +164,7 @@ if(!loaded.length)throw Error(failures.join('; ')||'No broker data');entries=loa
 }catch(error){if(source==='BROKER DATA'){source='STALE BROKER DATA';renderSignals()}$('liveBadge').textContent='NOT CONNECTED';$('liveStatus').textContent=`Live scan unavailable: ${error.message}. Previous results are not live. Demo and CSV remain available.`}finally{$('liveScan').disabled=false}}
 $('cryptoScan').onclick=scanCrypto;
 $('runCryptoMtf').onclick=scanCryptoMtf;
+$('runNseMtf').onclick=scanNseMtf;
 $('csvFile').addEventListener('change',async event=>{const file=event.target.files[0];if(!file)return;if(file.size>15_000_000){$('status').textContent='CSV exceeds 15 MB';return}load(await file.text(),'IMPORTED CSV')});$('demo').onclick=()=>load(csv,'DEMO DATA');$('clear').onclick=()=>{entries=[];results=[];source='NO DATA';renderSignals();$('csvFile').value='';$('sourceTag').textContent=source;$('liveBadge').textContent='NOT CONNECTED';$('status').textContent='Cleared. Your imported CSV is processed in this browser.';render()};$('liveScan').onclick=scanLive;['cap','direction','sort'].forEach(id=>$(id).onchange=render);document.querySelectorAll('[data-indicator]').forEach(x=>x.onchange=recalculate);
 window.TradeMindResearchData=()=>({entries,source});
 
