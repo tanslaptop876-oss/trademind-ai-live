@@ -1,0 +1,24 @@
+name: TradeMind public market-data smoke test
+on:
+  push:
+    branches:
+      - feature/scanner-phase1-mtf-breakout
+    paths:
+      - 'tests/live-public-providers.cjs'
+      - 'functions/api/market-data.js'
+      - 'functions/api/fx-reference.js'
+      - '.github/workflows/public-data-smoke.yml'
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  public-sources:
+    runs-on: ubuntu-latest
+    timeout-minutes: 3
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Query actual public read-only endpoints (no secrets)
+        run: node tests/live-public-providers.cjs
