@@ -27,6 +27,6 @@ jobs:
       - name: Install isolated Playwright test dependency
         run: npm install --no-save --no-package-lock playwright@1.56.1
       - name: Install Chromium browser and runtime dependencies
-        run: npx playwright install --with-deps chromium
+        run: npx playwright install chromium
       - name: Execute browser smoke tests with mocked crypto candles
         run: node tests/browser-smoke.cjs
