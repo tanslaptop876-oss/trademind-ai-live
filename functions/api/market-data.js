@@ -53,11 +53,11 @@ async function upstox({instrumentKey,mode,interval,token}){
 // Public CoinDCX spot candles; no auth, orders, or user-provided upstream URLs.
 async function coindcxPublicCandles({symbol,interval}){
   const pairs={BTCUSDT:['B-BTC_USDT','USDT'],ETHUSDT:['B-ETH_USDT','USDT'],BTCINR:['I-BTC_INR','INR'],ETHINR:['I-ETH_INR','INR']};
-  const mapping={'1min':'1m','5min':'5m','15min':'15m','30min':'30m','60min':'1h','daily':'1d','weekly':'1w','monthly':'1M'};
+  const mapping={'1min':'1m','15min':'15m','60min':'1h','daily':'1d'};
   if(!pairs[symbol])throw new Error('Supported public crypto pairs: BTCUSDT, ETHUSDT, BTCINR, ETHINR');
-  if(!mapping[interval])throw new Error('Unsupported CoinDCX candle interval');
+  if(!mapping[interval])throw new Error('CoinDCX source supports only 1min, 15min, 60min and daily; no extrapolated candles');
   const [pair,currency]=pairs[symbol];
-  const url=new URL('https://public.coindcx.com/market_data/candles');
+  const url=new URL('https://api.coindcx.com/market_data/candles');
   url.searchParams.set('pair',pair);url.searchParams.set('interval',mapping[interval]);url.searchParams.set('limit','500');
   const response=await fetch(url,{headers:{accept:'application/json'},signal:AbortSignal.timeout(8000)});
   if(!response.ok)throw Error('CoinDCX public candles HTTP '+response.status);
