@@ -88,7 +88,7 @@
       return {status:'EOD',fresh:false,reason:'Not an intraday live interval'};
     const raw=String(timestamp||'').trim();
     // For timezone-naive Indian exchange timestamps interpret wall-clock as Asia/Kolkata.
-    const normalized=/^\\d{4}-\\d{2}-\\d{2}[ T]\\d{2}:\\d{2}/.test(raw)&&!/(Z|[+-]\\d{2}:?\\d{2})$/i.test(raw)
+    const normalized=/^\d{4}-\d{2}-\d{2}[ T]\d{2}:\d{2}/.test(raw)&&!/(Z|[+-]\d{2}:?\d{2})$/i.test(raw)
       ?raw.replace(' ','T')+'+05:30':raw;
     const ts=Date.parse(normalized),age=now-ts,span=durations[interval];
     if(!Number.isFinite(ts)||!Number.isFinite(now))return {status:'UNKNOWN',fresh:false,reason:'Invalid candle timestamp'};
