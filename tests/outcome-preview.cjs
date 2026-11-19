@@ -12,8 +12,8 @@ const fs=require('node:fs');
     .replace("from './market-data.js'",'from '+JSON.stringify(marketUri));
   const {onRequestGet}=await import('data:text/javascript;base64,'+Buffer.from(patched).toString('base64'));
   const token='test-only-token-at-least-24-characters';
-  const span=900000,base=Math.floor((Date.now()-10*span)/span)*span;
-  const candles=Array.from({length:11},(_,i)=>{
+  const span=900000,base=Math.floor((Date.now()-42*span)/span)*span;
+  const candles=Array.from({length:40},(_,i)=>{
     const n=100+i;
     return {time:base+i*span,open:n,high:n+2,low:n-2,close:n+1,volume:1000};
   });
