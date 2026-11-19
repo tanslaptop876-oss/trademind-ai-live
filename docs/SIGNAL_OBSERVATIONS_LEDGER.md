@@ -48,3 +48,21 @@ Results are `PENDING` where candles are missing, contradictory or still forming,
 Any missing bar, unsupported timeframe, overnight crossing, or unknown source quality leads to `PENDING`, not WIN or LOSS. Daily/weekly/monthly reconciliation is intentionally disabled until exchange calendars and expected session dates are implemented. Even an `EVALUATED` result uses provider-returned historical candles and is **not audited exchange truth**.
 
 This remains a pure-function evaluator plus an unexecuted D1 schema. There is no background job, no database write of evaluated outcomes, no broker trade, and no verified production data source enabled by this change.
+
+## Admin-only CoinDCX outcome preview (development; no persistence)
+
+`functions/api/outcome-preview.js` is a **read-only** server endpoint intended for trusted administrative workflows, not for browser-public invocation.
+
+Request: `GET /api/outcome-preview?event_key=<encoded_event_key>&horizon=5&fee_bps=10` with server-side `x-signal-log-token` header. Requirements:
+- Bound D1 `SIGNAL_DB` with a preexisting recorded observation; secret `SIGNAL_LOG_TOKEN` at least 24 characters
+- Observation must have `market=CRYPTO`, `source=COINDCX`, a supported symbol (BTCUSDT, ETHUSDT, BTCINR, ETHINR), and a supported timeframe (1m, 15m, 1h or daily)
+- Uses the server's own CoinDCX public-candle adapter instead of trusting user-supplied future candles
+- Explicitly marks a candle complete only after its timeframe duration plus a conservative 60-second guard
+- The existing `signal-forward-outcomes.js` evaluator checks original close, enough forward bars, interval continuity and no-lookahead entry at next-bar open
+- Daily outcomes remain `PENDING` because calendar validation is not enabled
+- Unsupported cases and upstream failures fail closed (no fabricated accuracy)
+- Response includes `persisted:false`, `noOrders:true`, and unverified-provider disclosure; **no D1 writes or order routing occur**
+
+This is **not independently verified exchange history**, a production accuracy statistic, a scheduled job, or a proven live prediction service. A shared admin secret is still not safe for an untrusted multi-tenant public application. Verify public exchange API availability, license/rate limits, D1 binding, route security, and actual browser behavior before deployment.
+
+Tests: `node tests/outcome-preview.cjs`, included in GitHub Actions. Its CoinDCX response and database are mocked.
