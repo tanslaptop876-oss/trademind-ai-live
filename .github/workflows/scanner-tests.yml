@@ -39,5 +39,7 @@ jobs:
         run: node tests/outcome-preview.cjs
       - name: Server-side outcome reconciliation and D1 deduplication
         run: node tests/outcome-reconcile.cjs
+      - name: SQLite migration and static dashboard wiring checks
+        run: python3 tests/deployment-readiness.py
       - name: Syntax check research UI
         run: node --check historical-screener.js
