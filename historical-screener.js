@@ -16,4 +16,27 @@ if(!loaded.length)throw Error(failures.join('; ')||'No broker data');entries=loa
 }catch(error){$('liveBadge').textContent='NOT CONNECTED';$('liveStatus').textContent=`Live scan unavailable: ${error.message}. Demo and CSV remain available.`}finally{$('liveScan').disabled=false}}
 $('csvFile').addEventListener('change',async event=>{const file=event.target.files[0];if(!file)return;if(file.size>15_000_000){$('status').textContent='CSV exceeds 15 MB';return}load(await file.text(),'IMPORTED CSV')});$('demo').onclick=()=>load(csv,'DEMO DATA');$('clear').onclick=()=>{entries=[];results=[];source='NO DATA';$('csvFile').value='';$('sourceTag').textContent=source;$('liveBadge').textContent='NOT CONNECTED';$('status').textContent='Cleared. Your imported CSV is processed in this browser.';render()};$('liveScan').onclick=scanLive;['cap','direction','sort'].forEach(id=>$(id).onchange=render);document.querySelectorAll('[data-indicator]').forEach(x=>x.onchange=recalculate);
 window.TradeMindResearchData=()=>({entries,source});
+
+// Optional read-only research module: single-timeframe trend and closed-candle breakout.
+$('runExtended').addEventListener('click',()=>{
+  const output=$('extendedResults'),status=$('extendedStatus');
+  if(!entries.length){status.textContent='Load CSV/demo or broker data first.';output.innerHTML='<tr><td colspan="5">No data loaded.</td></tr>';return}
+  const extension=window.TradeMindScannerExtensions;
+  if(!extension){status.textContent='Scanner extension unavailable.';return}
+  const interval=source==='BROKER DATA'?$('liveInterval').value:'imported interval (unspecified)';
+  let complete=0,failures=0;
+  output.innerHTML=entries.map(entry=>{
+    try{
+      const rows=entry.rows.map(r=>({timestamp:r.date,open:r.open,high:r.high,low:r.low,close:r.close,volume:r.volume,complete:true}));
+      // Broker response has no explicit bar-completion flag: drop the latest bar.
+      if(source==='BROKER DATA')rows.pop();
+      const trend=extension.multiTimeframe([{timeframe:'1d',rows}]).timeframes[0];
+      const result=extension.breakout(rows);
+      complete++;
+      const ratio=result.volumeRatio===null?'unavailable':result.volumeRatio.toFixed(2)+'x';
+      return '<tr><td><b>'+escape(entry.symbol)+'</b></td><td>'+escape(trend.direction)+'<small>One input series only</small></td><td>'+escape(result.candidate||'WAIT')+'<small>Confirmed: '+escape(result.direction)+'</small></td><td>'+escape(ratio)+'</td><td>'+ (Number.isFinite(result.support)?result.support.toFixed(2):'—')+' / '+(Number.isFinite(result.resistance)?result.resistance.toFixed(2):'—')+'</td></tr>';
+    }catch(error){failures++;return '<tr><td>'+escape(entry.symbol)+'</td><td colspan="4">'+escape(error.message)+'</td></tr>'}
+  }).join('');
+  status.textContent=complete+' analyzed, '+failures+' unavailable. Input: '+interval+'. Research-only rule signals; no trained prediction or broker orders.';
+});
 })();
