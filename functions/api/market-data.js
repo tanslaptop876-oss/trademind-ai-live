@@ -50,6 +50,34 @@ async function upstox({instrumentKey,mode,interval,token}){
   return {symbol:instrumentKey,type:'stocks',mode,interval,source:'Upstox',delay:'Exchange snapshot; plan entitlement applies',currency:'INR',pe:null,quote:lastPrice,bid:Number.isFinite(bid)?bid:null,ask:Number.isFinite(ask)?ask:null,spreadBps:Number.isFinite(spreadBps)?spreadBps:null,averageVolume,asOf:String(quote.timestamp||rows.at(-1).date),rows};
 }
 
+// Public CoinDCX spot candles; no auth, orders, or user-provided upstream URLs.
+async function coindcxPublicCandles({symbol,interval}){
+  const pairs={BTCUSDT:['B-BTC_USDT','USDT'],ETHUSDT:['B-ETH_USDT','USDT'],BTCINR:['I-BTC_INR','INR'],ETHINR:['I-ETH_INR','INR']};
+  const mapping={'1min':'1m','5min':'5m','15min':'15m','30min':'30m','60min':'1h','daily':'1d','weekly':'1w','monthly':'1M'};
+  if(!pairs[symbol])throw new Error('Supported public crypto pairs: BTCUSDT, ETHUSDT, BTCINR, ETHINR');
+  if(!mapping[interval])throw new Error('Unsupported CoinDCX candle interval');
+  const [pair,currency]=pairs[symbol];
+  const url=new URL('https://public.coindcx.com/market_data/candles');
+  url.searchParams.set('pair',pair);url.searchParams.set('interval',mapping[interval]);url.searchParams.set('limit','500');
+  const response=await fetch(url,{headers:{accept:'application/json'},signal:AbortSignal.timeout(8000)});
+  if(!response.ok)throw Error('CoinDCX public candles HTTP '+response.status);
+  const payload=await response.json();
+  if(!Array.isArray(payload))throw Error('CoinDCX returned invalid candles');
+  const byTime=new Map();
+  for(const record of payload){
+    const ts=Number(record.time),open=Number(record.open),high=Number(record.high),low=Number(record.low),close=Number(record.close),volume=record.volume==null?null:Number(record.volume);
+    if(!Number.isFinite(ts)||ts<=0||!Number.isFinite(open)||!Number.isFinite(high)||!Number.isFinite(low)||!Number.isFinite(close)
+      ||open<=0||high<=0||low<=0||close<=0||low>Math.min(open,close)||high<Math.max(open,close)
+      ||high<low||(volume!==null&&(!Number.isFinite(volume)||volume<0)))continue;
+    const date=new Date(ts).toISOString();
+    byTime.set(date,{date,open,high,low,close,volume});
+  }
+  const rows=[...byTime.values()].sort((a,b)=>a.date.localeCompare(b.date)).slice(-500);
+  if(rows.length<35)throw Error('CoinDCX returned fewer than 35 valid candles');
+  return {symbol,type:'crypto',mode:'live',interval,source:'CoinDCX public spot candles',delay:'Public exchange candles; may be delayed, incomplete or unavailable',currency,
+    quote:rows.at(-1).close,pe:null,asOf:rows.at(-1).date,rows};
+}
+
 export async function onRequestGet(context){
   const requestUrl=new URL(context.request.url);
   const symbol=(requestUrl.searchParams.get('symbol')||'').trim().toUpperCase();
@@ -59,6 +87,16 @@ export async function onRequestGet(context){
   const upstoxKey=(requestUrl.searchParams.get('upstox_key')||'').trim().toUpperCase();
   const iciciCode=(requestUrl.searchParams.get('icici_code')||'').trim().toUpperCase();
   if(!/^[A-Z0-9./_-]{1,24}$/.test(symbol)||!['stocks','crypto','mcx','forex'].includes(type)||!['live','eod'].includes(mode)||!['1min','5min','15min','30min','60min','daily','weekly','monthly'].includes(interval))return json({error:'Invalid market-data request'},400);
+  // Opt-in direct no-key crypto source when enabled, or fallback if no generic market provider is configured.
+  if(type==='crypto'&&(context.env.FREE_CRYPTO_SOURCE==='coindcx'
+    ||(!context.env.MARKET_DATA_BASE_URL&&!context.env.MARKET_API_KEY))){
+    try{
+      const data=await coindcxPublicCandles({symbol,interval});
+      return json({...data,mode},200,{'cache-control':'public, max-age=30'});
+    }catch(error){
+      return json({error:error?.name==='TimeoutError'?'CoinDCX public endpoint timed out':error.message||'CoinDCX candles unavailable'},502,{'cache-control':'no-store'});
+    }
+  }
   if(context.env.MARKET_PROVIDER==='upstox'&&type==='stocks'){
     if(!context.env.UPSTOX_ACCESS_TOKEN)return json({error:'UPSTOX_ACCESS_TOKEN is not configured',mode:'demo'},503);if(!/^NSE_EQ\|[A-Z0-9]{8,20}$/.test(upstoxKey))return json({error:'A valid NSE Upstox instrument key is required'},400);
     try{const data=await upstox({instrumentKey:upstoxKey,mode,interval,token:context.env.UPSTOX_ACCESS_TOKEN});return json({...data,rows:data.rows.slice(-500)},200,{'cache-control':mode==='live'?'private, max-age=10':'private, max-age=300'})}catch(error){return json({error:error?.name==='TimeoutError'?'Upstox timed out':error.message||'Upstox request failed'},502)}
