@@ -3,7 +3,7 @@ const policy=require('../live-signal-policy.js');
 const at='2026-11-20T04:20:00.000Z'; // 09:50 Asia/Kolkata, Friday
 const now=Date.parse(at);
 const rows=Array.from({length:42},(_,i)=>{
-  const time=new Date(Date.parse('2026-11-20T03:15:00.000Z')+i*60000).toISOString();
+  const time=new Date(Date.parse('2026-11-20T03:38:00.000Z')+i*60000).toISOString();
   return {date:time,open:100+i,high:102+i,low:99+i,close:101+i,volume:100};
 });
 const entry={rows};
