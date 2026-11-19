@@ -37,3 +37,13 @@ assert.equal(hit.volumeRatio,2.5);
 assert.equal(breakout(breakoutRows.map((r,i)=>i===24?{...r,volume:110}:r)).direction,'WAIT');
 assert.equal(breakout(breakoutRows.map((r,i)=>i===24?{...r,volume:null}:r)).volumeAvailable,false);
 console.log('Scanner extensions checks passed');
+
+const {candleFreshness}=require('../scanner-extensions.js');
+const marketTime=Date.parse('2026-11-19T10:15:00+05:30');
+assert.equal(candleFreshness('2026-11-19 10:10:00','5min',marketTime).status,'RECENT');
+assert.equal(candleFreshness('2026-11-18 10:10:00','5min',marketTime).status,'STALE');
+assert.equal(candleFreshness('2026-11-19','daily',marketTime).status,'EOD');
+assert.equal(candleFreshness('bad timestamp','5min',marketTime).status,'UNKNOWN');
+assert.equal(candleFreshness('2026-11-19 12:00:00','5min',marketTime).status,'FUTURE');
+assert.equal(candleFreshness('2026-11-19 10:10:00','5min',Date.parse('2026-11-19T18:00:00+05:30')).fresh,false);
+console.log('Broker candle freshness and fail-closed status checks passed');
