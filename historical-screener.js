@@ -25,7 +25,7 @@ $('runExtended').addEventListener('click',()=>{
   if(!extension){status.textContent='Scanner extension unavailable.';return}
   const interval=source==='BROKER DATA'?$('liveInterval').value:'CSV (interval unverified)';
   const mapped={'1min':'1m','5min':'5m','15min':'15m','30min':'30m','60min':'1h','daily':'1d','weekly':'1w','monthly':'1mo'};
-  const timeframe=source==='BROKER DATA'?mapped[interval]:(entries.every(e=>e.rows.every(r=>/^\\d{4}-\\d{2}-\\d{2}$/.test(r.date)))?'1d':null);
+  const timeframe=source==='BROKER DATA'?mapped[interval]:(entries.every(e=>e.rows.every(r=>/^\d{4}-\d{2}-\d{2}$/.test(r.date)))?'1d':null);
   let complete=0,failures=0;
   output.innerHTML=entries.map(entry=>{
     try{
