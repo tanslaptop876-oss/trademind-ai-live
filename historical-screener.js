@@ -10,8 +10,10 @@ function render(){const sort=$('sort').value;let list=results.filter(r=>($('cap'
 function renderSignals(){
   const body=$('signalRows'),tag=$('signalSource'),notice=$('signalNotice');
   const broker=source==='BROKER DATA',interval=broker?$('liveInterval').value:'unknown';
-  tag.textContent=broker?'BROKER SNAPSHOT · '+interval:source==='NO DATA'?'NO LIVE SIGNAL':source+' · NOT LIVE';
-  notice.textContent=broker?'Read-only broker candle snapshot. Refresh manually for newer data. Signals use the last closed candle conservatively; provider timestamps and delays must be verified. No orders or AI-probability claims.':'Demo / imported CSV signals are NOT LIVE. Rule-based technical evidence only; no orders or calibrated AI prediction.';
+  const freshness=broker&&entries.length?window.TradeMindScannerExtensions.candleFreshness(entries[0].rows.at(-1).date,interval):null;
+  const recent=broker&&freshness&&freshness.fresh;
+  tag.textContent=broker?(recent?'RECENT BROKER CANDLES · ':'HISTORICAL / STALE BROKER · ')+interval:source==='NO DATA'?'NO LIVE SIGNAL':source+' · NOT LIVE';
+  notice.textContent=broker?(freshness.reason+'. Read-only broker snapshot; possible exchange delay. Most recent candle excluded. No orders or AI probability claims.'):'Demo / imported CSV signals are NOT LIVE. Rule-based technical evidence only; no orders or calibrated AI prediction.';
   if(!entries.length){body.innerHTML='<tr><td colspan="5">Load candles to see research signals.</td></tr>';return}
   const chosen=selected();
   if(chosen.length<2){body.innerHTML='<tr><td colspan="5">Select at least two indicators.</td></tr>';return}
