@@ -109,7 +109,7 @@
     if(direction==='WAIT')return {status:'WAIT',reason:'No directional consensus',executable:false};
     const bars=verified(rows).filter(x=>x.complete);
     if(bars.length<atrWindow+1)return {status:'WAIT',reason:'Not enough closed candles for ATR',executable:false};
-    const recent=bars.slice(-atrWindow),prior=bars.at(-atrWindow-1),tr=[];
+    const recent=bars.slice(-atrWindow),tr=[];let prior=bars.at(-atrWindow-1);
     for(const r of recent){
       tr.push(Math.max(r.high-r.low,Math.abs(r.high-prior.close),Math.abs(r.low-prior.close)));
       prior=r;
