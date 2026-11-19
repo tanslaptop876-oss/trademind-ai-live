@@ -34,7 +34,7 @@ const nonSession=bars.map(b=>({...b,date:new Date(Date.parse(b.date)+86400000).t
 assert.equal(evaluate(observation,nonSession,{...opts,market:'NSE'}).status,'PENDING');
 const nse=evaluate(observation,bars,{...opts,market:'NSE'});
 assert.equal(nse.status,'EVALUATED');
-const overnight=bars.map((b,i)=>({...b,date:new Date(start+i*3600000).toISOString()}));
+const overnight=bars.map((b,i)=>({...b,date:new Date(start+4*3600000+i*3600000).toISOString()}));
 const overnightObservation={...observation,candle_at:overnight[2].date,candle_close:overnight[2].close};
 assert.equal(evaluate(overnightObservation,overnight,{...opts,timeframe:'1h',market:'NSE'}).status,'PENDING');
 console.log('Market interval and session fail-closed tests passed');
