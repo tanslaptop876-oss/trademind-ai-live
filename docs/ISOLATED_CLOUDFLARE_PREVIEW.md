@@ -26,3 +26,11 @@ This is an **opt-in, non-production** deployment path. Nothing deploys when code
 The preview is **not** a trained AI prediction engine; it is rule-based research. Neither real NSE/BSE broker connectivity nor an actual D1 migration is included. The Breeze UI exists but will fail closed because no ICICI credentials or access-code secrets are configured for this preview. Real broker data must be tested separately with approved entitlements and authenticated protections.
 
 Cloudflare preview deployment, any D1 database creation/migration, secret configuration, or changes to the live Pages site require a distinct authorized action after access is provided. No auto trading should be enabled.
+
+## Crypto-only preview browser preflight
+
+The preview builder now copies a **dedicated** `preview-functions/api/market-data.js` which handles only four CoinDCX spot pairs and four public candle intervals. The general-purpose broker adapter is **not** copied. `preview-mode.js` (generated within the preview package) changes the preview heading, clearly discloses unavailable NSE/BSE and trained-AI features, disables broker scan and NSE comparison controls, and disables the broker access-code input.
+
+The GitHub Chromium QA workflow runs `tests/browser-smoke.cjs` twice: against the development files and the **exact generated preview static assets** (`PREVIEW_PACKAGE=1`). The latter asserts that the broker controls are disabled while demo, historical journal, crypto scan and multi-timeframe research work with mock data. It does not test actual hosted Cloudflare Pages routing, access control, D1 or broker connectivity.
+
+The isolated preview deployment workflow remains manual-only and requires a separate Cloudflare Pages project with dedicated environment secrets. It has not been executed.
