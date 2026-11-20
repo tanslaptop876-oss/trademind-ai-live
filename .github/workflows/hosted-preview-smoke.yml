@@ -3,7 +3,11 @@ on:
   workflow_dispatch:
     inputs:
       preview_url:
-        description: 'HTTPS URL of the isolated Cloudflare Pages preview (must contain preview/staging)'
+        description: 'HTTPS URL of the isolated Cloudflare Pages preview'
+        type: string
+        required: true
+      preview_project:
+        description: 'Exact dedicated Cloudflare Pages preview project name'
         type: string
         required: true
 permissions:
@@ -20,4 +24,5 @@ jobs:
       - name: Inspect deployed preview without credentials or writes
         env:
           PREVIEW_URL: ${{ inputs.preview_url }}
+          PREVIEW_PROJECT: ${{ inputs.preview_project }}
         run: node tests/hosted-preview-smoke.cjs
