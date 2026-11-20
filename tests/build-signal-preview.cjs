@@ -46,6 +46,12 @@ assert.ok(original.includes('</body>'),'Preview HTML structure changed');
 fs.writeFileSync(htmlPath,original.replace('</body>','<script src="preview-mode.js"></script></body>'));
 fs.writeFileSync(path.join(out,'public','index.html'),
   '<!doctype html><html lang="en"><meta charset="utf-8"><meta http-equiv="refresh" content="0; url=/historical-screener.html"><title>TradeMind Signal Preview</title><a href="/historical-screener.html">Open TradeMind Signal Preview</a></html>\n');
+// Record the exact source revision so hosted checks cannot pass on stale deployments.
+const revision=process.env.GITHUB_SHA || require('node:child_process').execFileSync(
+  'git',['rev-parse','HEAD'],{cwd:root,encoding:'utf8'}).trim();
+assert.match(revision,/^[a-f0-9]{40}$/,'Expected a verified Git revision');
+fs.writeFileSync(path.join(out,'public','preview-revision.json'),
+  JSON.stringify({revision,kind:'isolated-crypto-signal-preview'})+'\n');
 const installed=fs.readdirSync(path.join(out,'functions','api')).sort();
 assert.deepEqual(installed,functions.sort());
 assert.ok(!fs.existsSync(path.join(out,'functions','api','outcome-reconcile.js')));
