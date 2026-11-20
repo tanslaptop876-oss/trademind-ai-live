@@ -20,7 +20,7 @@ assert.equal(analyze(null,{now}).status,'unavailable');
 assert.equal(analyze([row('Profit rises', '2026-11-21T12:00:00Z')],{now}).status,'no_recent_articles');
 assert.equal(analyze([row('Profit rises', '2026-11-20T08:00:00Z','http://example.com')],{now}).status,'no_recent_articles');
 
-const conditional= require('../news-impact.js').conditionalScenario;
+const conditionalScenario = require('../news-impact.js').conditionalScenario;
 const baseline={prices:Array.from({length:50},(_,i)=>100+i*.2),score:58,vol:23,horizon:10};
 const before=JSON.stringify(baseline);
 const ordinary=(b)=>{
