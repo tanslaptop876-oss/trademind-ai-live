@@ -30,7 +30,7 @@ jobs:
       - name: Check out reviewed, tested feature revision
         uses: actions/checkout@v4
         with:
-          ref: 45654d89c3b11f491b07de03a015b90b2a4838ea
+          ref: 5930f7bab04e517456735eeeb504753e88b8ea23
           persist-credentials: false
 
       - uses: actions/setup-node@v4
@@ -91,6 +91,7 @@ jobs:
           set -euo pipefail
           export PREVIEW_URL="https://signal-preview.${PREVIEW_PROJECT}.pages.dev"
           export PREVIEW_PROJECT
+          export EXPECTED_PREVIEW_REVISION="$(git rev-parse HEAD)"
           for attempt in 1 2 3; do
             if node ../tests/hosted-preview-smoke.cjs; then
               echo 'Hosted crypto-only preview verified'
