@@ -6,7 +6,8 @@ const http=require('node:http');
 const path=require('node:path');
 const {chromium}=require('playwright');
 
-const root=path.resolve(__dirname,'..');
+const packaged=process.env.PREVIEW_PACKAGE==='1';
+const root=packaged?path.resolve(__dirname,'../.preview-package/public'):path.resolve(__dirname,'..');
 const allow=new Set(['historical-screener.html','historical-screener.css','styles.css',
   'screener-engine.js','signal-journal.js','scanner-extensions.js','historical-screener.js']);
 const mime={'.html':'text/html; charset=utf-8','.js':'application/javascript; charset=utf-8','.css':'text/css; charset=utf-8'};
@@ -54,6 +55,12 @@ const server=http.createServer((req,res)=>{
         assert.ok(request.url().includes('/api/market-data'),'Unexpected API call');
     });
     await page.goto('http://127.0.0.1:'+port+'/historical-screener.html',{waitUntil:'load'});
+    if(packaged){
+      assert.equal(await page.locator('#liveScan').isDisabled(),true,'Broker scan must be unavailable in public preview');
+      assert.equal(await page.locator('#runNseMtf').isDisabled(),true,'NSE MTF must be unavailable in public preview');
+      assert.equal(await page.locator('#marketAccess').isDisabled(),true,'Broker credentials must be unavailable in public preview');
+      assert.match(await page.locator('#previewRestrictions').innerText(),/NSE\/BSE.*not available here/);
+    }
     assert.match(await page.locator('#sourceTag').innerText(),/NO DATA/);
     await page.locator('#demo').click();
     assert.match(await page.locator('#sourceTag').innerText(),/DEMO DATA/);
@@ -80,10 +87,14 @@ const server=http.createServer((req,res)=>{
     await page.waitForFunction(()=>document.getElementById('runCryptoMtf').disabled===false);
     assert.match(await page.locator('#cryptoMtfStatus').innerText(),/three independently fetched source intervals/);
     assert.match(await page.locator('#cryptoMtfResults').innerText(),/BTCUSDT/);
-    await page.locator('#runNseMtf').click();
-    assert.match(await page.locator('#nseMtfStatus').innerText(),/access code is required/i);
+    if(!packaged){
+      await page.locator('#runNseMtf').click();
+      assert.match(await page.locator('#nseMtfStatus').innerText(),/access code is required/i);
+    }else{
+      assert.match(await page.locator('#nseMtfStatus').innerText(),/not enabled/);
+    }
     assert.equal(errors.length,0,'Uncaught browser errors: '+errors.join('; '));
-    console.log('Browser QA PASS: demo, research, journal, crypto scanner, MTF and broker access guard');
+    console.log((packaged?'DEPLOYABLE PREVIEW PACKAGE':'DEVELOPMENT PAGE')+' Browser QA PASS: demo, research, journal, crypto scanner, MTF and broker guard');
   }finally{
     await browser.close();
     await new Promise(resolve=>server.close(resolve));
