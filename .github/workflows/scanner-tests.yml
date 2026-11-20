@@ -1,0 +1,53 @@
+name: TradeMind scanner and market-data tests
+on:
+  push:
+    branches:
+      - feature/scanner-phase1-mtf-breakout
+  pull_request:
+    paths:
+      - 'functions/api/**'
+      - 'tests/**'
+      - '*screener*.js'
+      - 'scanner-extensions.js'
+      - '.github/workflows/scanner-tests.yml'
+permissions:
+  contents: read
+jobs:
+  tests:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Historical and extended scanners
+        run: node tests/screener-engine.cjs
+      - name: Backtester
+        run: node tests/backtest-engine.cjs
+      - name: ICICI Breeze mocked adapter
+        run: node tests/market-data-breeze.cjs
+      - name: Public CoinDCX and FX mocked adapters
+        run: node tests/market-data-free.cjs
+      - name: Historical signal outcome journal
+        run: node tests/signal-journal.cjs
+      - name: Authenticated signal observations API
+        run: node tests/signal-observations.cjs
+      - name: Forward signal outcome reconciliation
+        run: node tests/signal-forward-outcomes.cjs
+      - name: Read-only outcome preview
+        run: node tests/outcome-preview.cjs
+      - name: Server-side outcome reconciliation and D1 deduplication
+        run: node tests/outcome-reconcile.cjs
+      - name: News-aware forecast and public-headline endpoint
+        run: node tests/news-impact.cjs
+      - name: SQLite migration and static dashboard wiring checks
+        run: python3 tests/deployment-readiness.py
+      - name: Verify isolated preview crypto-only API
+        run: node tests/preview-market-data.cjs
+      - name: Build isolated allowlisted preview package
+        run: node tests/build-signal-preview.cjs
+      - name: Compile exact packaged Cloudflare Pages Functions
+        run: npx --yes wrangler@4 pages functions build .preview-package/functions --outdir=.preview-package/compiled-functions
+      - name: Syntax check research UI
+        run: node --check historical-screener.js

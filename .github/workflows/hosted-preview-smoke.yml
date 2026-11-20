@@ -1,0 +1,28 @@
+name: TradeMind hosted preview smoke (manual)
+on:
+  workflow_dispatch:
+    inputs:
+      preview_url:
+        description: 'HTTPS URL of the isolated Cloudflare Pages preview'
+        type: string
+        required: true
+      preview_project:
+        description: 'Exact dedicated Cloudflare Pages preview project name'
+        type: string
+        required: true
+permissions:
+  contents: read
+jobs:
+  hosted-smoke:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 3
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Inspect deployed preview without credentials or writes
+        env:
+          PREVIEW_URL: ${{ inputs.preview_url }}
+          PREVIEW_PROJECT: ${{ inputs.preview_project }}
+        run: node tests/hosted-preview-smoke.cjs

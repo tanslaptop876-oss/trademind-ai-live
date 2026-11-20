@@ -1,0 +1,96 @@
+# Signal observations ledger (opt-in; not yet deployed)
+
+Signal-Only MVP research log; this stores **client-reported, unverified observations**, not trades or independently scored outcomes. No orders, broker execution, market-data credentials, or API-key access from the browser are part of this feature.
+
+## Provisioning
+
+1. Create a Cloudflare D1 database for the app and bind it to the Pages Function as `SIGNAL_DB` (do not assume binding exists).
+2. Execute `migrations/0001_signal_observations.sql` against that database through your normal reviewed migration workflow.
+3. Create a strong unique secret `SIGNAL_LOG_TOKEN` (at least 24 characters) on the server side.
+4. Use the authenticated API **only from a trusted server/admin integration**, never expose `SIGNAL_LOG_TOKEN` in browser HTML, JS, URL, logs, screenshots, or user-facing clients.
+5. This development branch is not production. Before any public release, replace the shared token with authenticated per-user, per-tenant identity and rate limiting, and require independently computed server-side observations.
+
+## API
+
+- `POST /api/signal-observations` requires `x-signal-log-token` and a JSON object containing:
+  `symbol`, `market`, `timeframe`, `source`, `signal`, `candleAt` (UTC ISO timestamp), `candleClose` (positive finite number), `ruleVersion`, and `evidence` (small flat scalar object).
+- `GET /api/signal-observations?limit=50` requires the same secret and returns at most 200 most recently observed records.
+- Event IDs are deterministic over market + symbol + timeframe + source + candle timestamp + rule version. Duplicate events are ignored rather than rewritten.
+- All saved rows are `status='UNVERIFIED'`; no win/loss figures are asserted.
+- No API to submit orders, prices of fills, or authentication to a broker.
+
+The SQL migration and API are written but **database binding, migration execution, secret configuration, and live smoke testing have not been performed**. The historical in-browser journal is a separate retrospective research tool and does not imply persistent storage.
+
+## Safety and limitations
+
+The current POST takes client-provided OHLC close and direction, which can be fabricated by any holder of the shared secret. Do not advertise its records as audited, official real-time, or proof of trading performance. Future phases: signed exchange feed identifiers, server-side signal generation, trusted clock/watermarks, tenant scoping, true outcome reconciliation, privacy and retention policy.
+
+Tests: `node tests/signal-observations.cjs` (mock D1, auth and dedupe). Cloudflare deployment integration must be tested separately.
+
+## Planned forward reconciliation (development only)
+
+Migration `migrations/0002_signal_outcomes.sql` defines a **separate** table for calculated forward outcomes, leaving the initial `signal_observations` table immutable. The pure evaluator is in `signal-forward-outcomes.js`, with tests in `tests/signal-forward-outcomes.cjs`.
+
+For each observation, the evaluator requires:
+- Original signal candle timestamp and matching OHLC close to exist in the supplied, sorted candle history
+- The signal candle and all subsequent horizon candles explicitly marked `complete:true`
+- At least `horizonBars` future candles, so entry occurs at the **next** candle open and measurement ends at the horizon-th candle close
+- Configurable illustrative round-trip cost in bps; a BUY/SELL directional result is not a simulated fill
+
+Results are `PENDING` where candles are missing, contradictory or still forming, and `SKIPPED` for WAIT. Only completed horizons produce `EVALUATED`. Every evaluated result is labelled `HISTORICAL_PROVIDER_DATA_NOT_AUDITED` and `executable:false`. The evaluator does **not** yet cross-check exchange sessions, holiday calendars, corporate actions, interval gaps, or broker fills.
+
+**Important:** The migration and pure evaluator are code only. They have not been applied or connected to a scheduler, trusted market-data fetch, D1 write path or production browser. There is no automatic future scoring yet. Future reconciliation must fetch trusted licensed candles server-side and avoid using client-provided closing prices to claim independent verification.
+
+## Forward outcome data-integrity gate (v2)
+
+`signal-forward-outcomes.js` now requires the evaluator to be called with explicit `market` and `timeframe` settings. Supported reconciliation is deliberately limited to `CRYPTO`, `NSE`, or `BSE` with 1m, 3m, 5m, 15m, 30m or 1h source bars. All candle timestamps from the observed bar through the entire forward horizon must be exactly one expected interval apart. NSE/BSE bars must also fall within **one** regular weekday session between 09:15 and 15:30 IST. These are safety restrictions, **not** a full exchange holiday/calendar verification.
+
+Any missing bar, unsupported timeframe, overnight crossing, or unknown source quality leads to `PENDING`, not WIN or LOSS. Daily/weekly/monthly reconciliation is intentionally disabled until exchange calendars and expected session dates are implemented. Even an `EVALUATED` result uses provider-returned historical candles and is **not audited exchange truth**.
+
+This remains a pure-function evaluator plus an unexecuted D1 schema. There is no background job, no database write of evaluated outcomes, no broker trade, and no verified production data source enabled by this change.
+
+## Admin-only CoinDCX outcome preview (development; no persistence)
+
+`functions/api/outcome-preview.js` is a **read-only** server endpoint intended for trusted administrative workflows, not for browser-public invocation.
+
+Request: `GET /api/outcome-preview?event_key=<encoded_event_key>&horizon=5&fee_bps=10` with server-side `x-signal-log-token` header. Requirements:
+- Bound D1 `SIGNAL_DB` with a preexisting recorded observation; secret `SIGNAL_LOG_TOKEN` at least 24 characters
+- Observation must have `market=CRYPTO`, `source=COINDCX`, a supported symbol (BTCUSDT, ETHUSDT, BTCINR, ETHINR), and a supported timeframe (1m, 15m, 1h or daily)
+- Uses the server's own CoinDCX public-candle adapter instead of trusting user-supplied future candles
+- Explicitly marks a candle complete only after its timeframe duration plus a conservative 60-second guard
+- The existing `signal-forward-outcomes.js` evaluator checks original close, enough forward bars, interval continuity and no-lookahead entry at next-bar open
+- Daily outcomes remain `PENDING` because calendar validation is not enabled
+- Unsupported cases and upstream failures fail closed (no fabricated accuracy)
+- Response includes `persisted:false`, `noOrders:true`, and unverified-provider disclosure; **no D1 writes or order routing occur**
+
+This is **not independently verified exchange history**, a production accuracy statistic, a scheduled job, or a proven live prediction service. A shared admin secret is still not safe for an untrusted multi-tenant public application. Verify public exchange API availability, license/rate limits, D1 binding, route security, and actual browser behavior before deployment.
+
+Tests: `node tests/outcome-preview.cjs`, included in GitHub Actions. Its CoinDCX response and database are mocked.
+
+## Admin-only D1 reconciliation write route (development only)
+
+`POST /api/outcome-reconcile` accepts a JSON object like `{"eventKey":"CRYPTO|BTCUSDT|15m|COINDCX|...","horizon":5,"feeBps":10}` with the server-only `x-signal-log-token` header. It requires the `SIGNAL_DB` binding, both D1 migrations, and a stored CoinDCX crypto observation. **Do not send this token from a browser or expose the route to untrusted clients.**
+
+The route calls `/api/outcome-preview` programmatically; preview itself independently fetches public CoinDCX candles on the server and applies the closed-candle, interval-contiguity and no-lookahead checks. If the result is `PENDING` or `SKIPPED`, **no database write occurs**. If it is `EVALUATED`, the route stores one row per event with `INSERT OR IGNORE`, retaining the `HISTORICAL_PROVIDER_DATA_NOT_AUDITED` label; duplicate requests cannot overwrite the first result. This route does not schedule itself, accept client-supplied future prices, or create a broker order.
+
+Important production restrictions: the current database uniqueness is one outcome per event, so the first successful evaluation permanently fixes horizon and fee assumptions; to support multiple official evaluation policies, version the event/evaluation key or make policy immutable before launch. A client-reported observation is not independently authenticated. Historical provider responses can be revised, and real fills, charges and liquidity are not modelled. This code needs real upstream smoke tests, Cloudflare Pages/D1 integration tests, identity/rate limiting, and an audited retention policy before public deployment.
+
+Mocked tests: `node tests/outcome-reconcile.cjs`, run by the development branch CI. No actual D1 database or production API was modified during development.
+
+## Outcome policy conflict protection
+
+The reconciliation route reads the existing stored result before previewing new source candles. An existing event with the same `forward_contiguous_v2` version, `horizon` and `feeBps` is returned as an unchanged duplicate. An existing event with different evaluation settings returns HTTP `409 Conflict`; the first saved outcome is not overwritten. The route also checks the stored policy after an `INSERT OR IGNORE` loses a concurrent insert race. New evaluations with different policies for the same signal will require a versioned outcome key in a future schema; do not treat the first-run policy as independently audited. Tests are mocked; live D1 race behavior remains unverified.
+
+## Pre-deployment migration and dashboard checks
+
+`tests/deployment-readiness.py` uses an in-memory SQLite database (the relational SQL dialect underlying D1) to execute migrations 0001 and 0002 twice, validate unique event keys, foreign-key enforcement, and reject invalid signal values. It also parses the research dashboard to detect duplicate HTML IDs, missing JS assets, incorrect script ordering, and JS references to missing controls. GitHub Actions invokes this script as part of the scanner CI.
+
+Passing these tests **does not** prove Cloudflare D1 production compatibility, Pages bindings, authentication configuration, browser interactions, live broker credentials, or market-data availability. Live deployment should remain blocked until an isolated preview environment is configured and tested end-to-end.
+
+## Isolated browser smoke QA (development-only)
+
+`tests/browser-smoke.cjs` uses Playwright Chromium with a local static HTTP server and mocked read-only CoinDCX candle responses. `.github/workflows/browser-smoke.yml` runs it on supported Ubuntu 24.04 in GitHub Actions.
+
+The test exercises: initial NO DATA label, loading synthetic demo instruments, signal rows, breakout research, retrospective outcome journal, clear/reset, public crypto candle UI, 15m/1h/daily crypto trend comparison and Breeze's missing-access-code guard. Any page script error or unexpected API request fails the test.
+
+This is **not** a production browser test: public crypto responses are simulated in the browser QA, independent of the separate real-network provider smoke workflow. It does not connect ICICI Breeze, validate Cloudflare Pages/D1 bindings, check actual mobile devices, or confirm real-time model accuracy. No broker execution endpoints are used.
