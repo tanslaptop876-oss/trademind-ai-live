@@ -41,5 +41,7 @@ jobs:
         run: node tests/outcome-reconcile.cjs
       - name: SQLite migration and static dashboard wiring checks
         run: python3 tests/deployment-readiness.py
+      - name: Build isolated allowlisted preview package
+        run: node tests/build-signal-preview.cjs
       - name: Syntax check research UI
         run: node --check historical-screener.js
