@@ -17,6 +17,33 @@ for(const name of functions){
   assert.ok(fs.existsSync(source), 'Missing approved public adapter '+name);
   fs.copyFileSync(source,path.join(out,'functions','api',name));
 }
+// Preview-specific UX: explicitly disable unavailable private broker features.
+const disclaimer = `(()=>{'use strict';
+  document.title='TradeMind AI — Crypto Signal Preview';
+  const header=document.querySelector('.screener-page header');
+  if(header){
+    const h=header.querySelector('h1');if(h)h.textContent='Crypto Signal Research Preview';
+    const p=document.createElement('p');
+    p.id='previewRestrictions';p.setAttribute('role','status');
+    p.textContent='PREVIEW ONLY: Public CoinDCX candles, demo CSV and rule-based signals. NSE/BSE, ICICI Breeze, brokerage orders, D1 logging and trained AI probabilities are not available here.';
+    header.after(p);
+  }
+  for(const id of ['liveScan','runNseMtf']){
+    const button=document.getElementById(id);
+    if(button){button.disabled=true;button.title='Broker access is disabled in this preview';}
+  }
+  const access=document.getElementById('marketAccess');
+  if(access){access.disabled=true;access.value='';}
+  const live=document.getElementById('liveStatus');
+  if(live)live.textContent='Broker data is not connected in this preview; use the public crypto scanner below.';
+  const nse=document.getElementById('nseMtfStatus');
+  if(nse)nse.textContent='NSE/BSE comparison is not enabled in this isolated preview.';
+})();`;
+fs.writeFileSync(path.join(out,'public','preview-mode.js'),disclaimer);
+const htmlPath=path.join(out,'public','historical-screener.html');
+const original=fs.readFileSync(htmlPath,'utf8');
+assert.ok(original.includes('</body>'),'Preview HTML structure changed');
+fs.writeFileSync(htmlPath,original.replace('</body>','<script src="preview-mode.js"></script></body>'));
 fs.writeFileSync(path.join(out,'public','index.html'),
   '<!doctype html><html lang="en"><meta charset="utf-8"><meta http-equiv="refresh" content="0; url=/historical-screener.html"><title>TradeMind Signal Preview</title><a href="/historical-screener.html">Open TradeMind Signal Preview</a></html>\n');
 const installed=fs.readdirSync(path.join(out,'functions','api')).sort();
@@ -30,4 +57,5 @@ for(const forbidden of ['ICICI_BREEZE','UPSTOX_ACCESS_TOKEN','MARKET_API_KEY','M
 }
 assert.deepEqual(fs.readdirSync(path.join(out,'functions','api')).sort(),['fx-reference.js','market-data.js']);
 
-console.log('Prepared minimal read-only preview package: '+files.length+' static assets + 2 public API routes.');
+assert.ok(fs.readFileSync(htmlPath,'utf8').includes('preview-mode.js'));
+console.log('Prepared crypto-only preview package with explicit broker-disabled disclosure and 2 read-only public APIs.');
