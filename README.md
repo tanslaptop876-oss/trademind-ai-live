@@ -62,7 +62,73 @@ For the built-in ICICI Direct Breeze NSE equity adapter, set:
 
 The adapter requests Breeze Historical Data V2 candles with the server-side application key and session token. The latest available candle is the displayed price, with its timestamp. Fifteen-minute and hourly bars are aggregated from native 5-minute and 30-minute candles; weekly and monthly bars are aggregated from daily candles. The session token must be refreshed according to ICICI Direct's session rules. The bundled Reliance, HDFC Bank and TCS instruments include Breeze stock codes; use ICICI's current instrument master for wider coverage. This integration is read-only and does not expose order-placement endpoints.
 
-### Mid/small-cap universe scanner
+### FYERS alternative for the dashboard and historical screener
+
+The dashboard and historical screener support FYERS NSE cash equities without Breeze.
+Set these **server-side** Cloudflare bindings:
+
+- `MARKET_PROVIDER=fyers`
+- `FYERS_APP_ID` — your FYERS application/client ID
+- `FYERS_ACCESS_TOKEN` — a valid FYERS access token
+- `MARKET_ACCESS_TOKEN` — a separate random TradeMind access code, never a broker credential
+
+Open `historical-screener.html`, select **FYERS**, enter the separate access
+code, and use symbols such as `NSE:RELIANCE-EQ,NSE:HDFCBANK-EQ,NSE:TCS-EQ`.
+The selected provider must match the server configuration; the browser cannot
+override it. Verify additional symbols against the provider's symbol master.
+This flow uses no order endpoints and does not store credentials in the browser.
+
+Supported intervals in this adapter: 1, 5, 15, 30, 60 minutes and daily.
+Weekly/monthly remain available for Breeze only. The adapter requests 28 calendar
+days for intraday candles or 365 days for daily candles, validates/sorts the
+response, requires 35 bars and returns at most 500. Intraday mode also requests a
+quote snapshot with its provider timestamp; EOD uses the latest candle close.
+These are manual snapshots, not streaming ticks. The latest candle may be
+unfinished and old timestamps must not be treated as current market activity.
+
+All FYERS responses use `no-store`. Missing configuration/access codes fail
+before contacting FYERS. Rate-limit errors stop the request without automatic
+retries. The existing 30-second browser cooldown is per session, not a shared
+server rate limiter: for multiple users, add account-wide throttling/caching
+before scaling. Each stock uses one history request plus one quote request in
+intraday mode. The dashboard uses the same server configuration: enter the
+separate TradeMind access code in Connections, select a bundled NSE stock,
+then choose Load selected instrument. Test connection verifies access without
+replacing the chart. The code stays in the page and is sent only in a request
+header, never in the URL or browser storage. Late responses after changing the
+instrument, interval or mode are ignored. The Upstox batch scanner remains a
+separate flow. Dashboard refreshes have no automatic polling or shared quota
+limiter; avoid repeated requests against provider limits.
+
+FYERS documents a free Standard plan with 5 data requests/second,
+50/minute and 5,000/day; an account, API app, authentication and applicable
+permissions are still required. Published plan limits can change. See
+[FYERS plans](https://fyers.in/api-docs/v3/getting-started/plans-and-limits/),
+[data API](https://fyers.in/api-docs/v3/api/data-api) and
+[official endpoint reference](https://github.com/FyersDev/fyers-skills/blob/master/skills/fyers-trading/references/market-data.md).
+
+Other options: the existing Upstox adapter requires its own account token and
+entitlements. For crypto, [Kraken public market-data endpoints](https://support.kraken.com/hc/articles/360000919986-public-endpoint-examples-you-can-try-them-directly-in-a-web-browser-)
+do not require an account; they are not an NSE source and are not integrated
+here. Public availability does not establish redistribution rights.
+
+Run all regression tests with Node.js 20+ (no dependencies):
+
+```sh
+node tests/backtest-engine.cjs
+node tests/screener-engine.cjs
+node tests/market-data-breeze.cjs
+node tests/market-data-fyers.cjs
+node tests/screener-provider.cjs
+node tests/dashboard-market-data.cjs
+```
+
+FYERS tests use mocked provider responses; a deployed smoke test with actual
+server credentials remains required. Claude automation is not implemented by
+this change; provider setup and a real-data smoke test should precede any
+automation consuming the data.
+
+### Upstox mid/small-cap universe scanner
 
 1. Start from `universe-template.csv` and populate current NSE rows with `symbol,name,cap,instrument_key` (`cap` must be `mid` or `small`).
 2. Import the CSV in the scalping scanner, then run the live scan.
