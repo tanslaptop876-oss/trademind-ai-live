@@ -39,6 +39,8 @@ jobs:
         run: node tests/outcome-preview.cjs
       - name: Server-side outcome reconciliation and D1 deduplication
         run: node tests/outcome-reconcile.cjs
+      - name: News-aware forecast and public-headline endpoint
+        run: node tests/news-impact.cjs
       - name: SQLite migration and static dashboard wiring checks
         run: python3 tests/deployment-readiness.py
       - name: Verify isolated preview crypto-only API
