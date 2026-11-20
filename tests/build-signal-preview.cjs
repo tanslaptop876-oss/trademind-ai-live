@@ -13,7 +13,7 @@ for(const name of files){
   fs.copyFileSync(path.join(root,name),path.join(out,'public',name));
 }
 for(const name of functions){
-  const source=path.join(root,'functions','api',name);
+  const source=path.join(root,name==='market-data.js'?'preview-functions':'functions','api',name);
   assert.ok(fs.existsSync(source), 'Missing approved public adapter '+name);
   fs.copyFileSync(source,path.join(out,'functions','api',name));
 }
@@ -22,4 +22,12 @@ fs.writeFileSync(path.join(out,'public','index.html'),
 const installed=fs.readdirSync(path.join(out,'functions','api')).sort();
 assert.deepEqual(installed,functions.sort());
 assert.ok(!fs.existsSync(path.join(out,'functions','api','outcome-reconcile.js')));
+const publicMarket=fs.readFileSync(path.join(out,'functions','api','market-data.js'),'utf8');
+assert.ok(publicMarket.includes('CoinDCX public spot candles'));
+for(const forbidden of ['ICICI_BREEZE','UPSTOX_ACCESS_TOKEN','MARKET_API_KEY','MARKET_DATA_BASE_URL',
+  'ALPHA_VANTAGE_API_KEY','MARKET_ACCESS_TOKEN','Authorization: Bearer','onRequestPost']){
+  assert.ok(!publicMarket.includes(forbidden),'Forbidden broker/private adapter capability in preview: '+forbidden);
+}
+assert.deepEqual(fs.readdirSync(path.join(out,'functions','api')).sort(),['fx-reference.js','market-data.js']);
+
 console.log('Prepared minimal read-only preview package: '+files.length+' static assets + 2 public API routes.');
