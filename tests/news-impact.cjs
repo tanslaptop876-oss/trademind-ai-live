@@ -19,6 +19,32 @@ assert.equal(analyze([], {now}).status,'no_recent_articles');
 assert.equal(analyze(null,{now}).status,'unavailable');
 assert.equal(analyze([row('Profit rises', '2026-11-21T12:00:00Z')],{now}).status,'no_recent_articles');
 assert.equal(analyze([row('Profit rises', '2026-11-20T08:00:00Z','http://example.com')],{now}).status,'no_recent_articles');
+
+const conditional= require('../news-impact.js').conditionalScenario;
+const baseline={prices:Array.from({length:50},(_,i)=>100+i*.2),score:58,vol:23,horizon:10};
+const before=JSON.stringify(baseline);
+const ordinary=(b)=>{
+ const last=b.prices.at(-1),last30=b.prices.slice(-30);
+ const slope=(last30.at(-1)-last30[0])/(last30.length-1);
+ const bias=(b.score-50)/50*Math.abs(slope||last*.002);
+ return last+(slope+bias)*b.horizon;
+};
+const normalBefore=ordinary(baseline);
+const scenario=conditionalScenario({...baseline,analysis:report});
+assert.ok(scenario&&scenario.conditional);
+assert.equal(scenario.probability,null);
+assert.ok(scenario.downside<=scenario.middle&&scenario.middle<=scenario.upside);
+assert.equal(JSON.stringify(baseline),before,'Original inputs must remain untouched');
+assert.equal(ordinary(baseline),normalBefore,'Base forecast must remain unchanged');
+assert.equal(conditionalScenario({...baseline,analysis:null}),null);
+assert.equal(conditionalScenario({...baseline,prices:[] ,analysis:report}),null);
+const ui=fs.readFileSync(require('node:path').join(__dirname,'../news-impact-ui.js'),'utf8');
+assert.match(ui,/forecast-comparison/);
+assert.match(ui,/baseDrawForecast\(prices,score,vol\)/);
+assert.doesNotMatch(ui,/originalSaveForecast|last\.target\s*\+=|last\.probUp\s*=/);
+const html=fs.readFileSync(require('node:path').join(__dirname,'../index.html'),'utf8');
+assert.match(html,/Normal forecast · price-based/);
+
 (async()=>{
  const file=fs.readFileSync(require('node:path').join(__dirname,'../functions/api/news-impact.js'),'utf8');
  // data URL permits loading an ESM Pages Function without a repository-wide "type: module" setting.
