@@ -81,3 +81,22 @@ jobs:
       - name: Deploy to verified isolated preview project
         working-directory: .preview-package
         run: npx --yes wrangler@4 pages deploy public --project-name="$PREVIEW_PROJECT" --branch=signal-preview
+
+      - name: Post-deploy hosted smoke checks on isolated preview
+        shell: bash
+        working-directory: .preview-package
+        env:
+          PREVIEW_PROJECT: ${{ vars.TRADEMIND_PREVIEW_PROJECT }}
+        run: |
+          set -euo pipefail
+          export PREVIEW_URL="https://signal-preview.${PREVIEW_PROJECT}.pages.dev"
+          export PREVIEW_PROJECT
+          for attempt in 1 2 3; do
+            if node ../tests/hosted-preview-smoke.cjs; then
+              echo 'Hosted crypto-only preview verified'
+              exit 0
+            fi
+            if (( attempt < 3 )); then sleep 10; fi
+          done
+          echo 'Hosted preview failed verification'
+          exit 1
