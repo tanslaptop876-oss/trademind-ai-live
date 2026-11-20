@@ -52,6 +52,9 @@ jobs:
           python3 tests/deployment-readiness.py
       - name: Package allowlisted static assets and read-only public market APIs
         run: node tests/build-signal-preview.cjs
+      - name: Compile Pages Functions locally before deploy
+        working-directory: .preview-package
+        run: npx --yes wrangler@4 pages functions build functions --outdir=.wrangler-preview-build
       - name: Publish isolated non-production Pages project
         working-directory: .preview-package
         env:
