@@ -1,0 +1,40 @@
+/* Hosted Cloudflare Pages preview verification — execute only after isolated deployment.
+ * Expects HTTPS trusted preview URL; tests public endpoints, no tokens/orders. */
+const assert=require('node:assert/strict');
+(async()=>{
+  const base=process.env.PREVIEW_URL;
+  if(!base)throw Error('PREVIEW_URL required');
+  const url=new URL(base);
+  if(url.protocol!=='https:'||!url.hostname.endsWith('.pages.dev')||
+     !/^[a-z0-9.-]+$/.test(url.hostname)||url.username||url.password)
+    throw Error('Expected a Cloudflare Pages HTTPS preview URL');
+  const prefix=url.hostname.split('.')[0];
+  if(!prefix.includes('preview-')&&!prefix.includes('staging-'))
+    throw Error('Refuse possibly production Pages hostname');
+  const request=async(route)=>{
+    const response=await fetch(new URL(route,url),{headers:{accept:'application/json'},signal:AbortSignal.timeout(12000)});
+    return {response,body:await response.text()};
+  };
+  const page=await request('/historical-screener.html');
+  assert.equal(page.response.status,200,'Hosted dashboard unavailable');
+  assert.match(page.body,/preview-mode\.js/);
+  const previewScript=await request('/preview-mode.js');
+  assert.equal(previewScript.response.status,200);
+  assert.match(previewScript.body,/broker.*disabled/i);
+  const crypto=await request('/api/market-data?symbol=BTCUSDT&type=crypto&mode=live&interval=15min');
+  const json=JSON.parse(crypto.body);
+  assert.equal(crypto.response.status,200,'Hosted crypto API error '+crypto.body.slice(0,200));
+  assert.equal(json.source,'CoinDCX public spot candles');
+  assert.ok(Array.isArray(json.rows)&&json.rows.length>=35);
+  assert.ok(!Object.hasOwn(json,'apiKey'));
+  const denied=await request('/api/market-data?symbol=RELIANCE&type=stocks&mode=live&interval=15min');
+  assert.equal(denied.response.status,400,'Stocks must be blocked in crypto-only preview');
+  const fx=await request('/api/fx-reference?pair=USDINR');
+  const fxJson=JSON.parse(fx.body);
+  assert.equal(fx.response.status,200);
+  assert.equal(fxJson.signalEligible,false);
+  assert.equal(fxJson.realtime,false);
+  const admin=await request('/api/outcome-reconcile');
+  assert.equal(admin.response.status,404,'Admin D1 write endpoint must not be deployed');
+  console.log('Hosted isolated preview smoke PASS: dashboard, CoinDCX, reference FX, no NSE/broker or admin endpoints');
+})().catch(err=>{console.error(err);process.exitCode=1});
