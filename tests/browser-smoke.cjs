@@ -10,6 +10,7 @@ const packaged=process.env.PREVIEW_PACKAGE==='1';
 const root=packaged?path.resolve(__dirname,'../.preview-package/public'):path.resolve(__dirname,'..');
 const allow=new Set(['historical-screener.html','historical-screener.css','styles.css',
   'screener-engine.js','signal-journal.js','scanner-extensions.js','historical-screener.js']);
+if(packaged)allow.add('preview-mode.js');
 const mime={'.html':'text/html; charset=utf-8','.js':'application/javascript; charset=utf-8','.css':'text/css; charset=utf-8'};
 
 function candles(interval){
