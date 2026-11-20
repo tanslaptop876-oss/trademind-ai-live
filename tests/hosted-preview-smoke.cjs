@@ -8,9 +8,15 @@ const assert=require('node:assert/strict');
   if(url.protocol!=='https:'||!url.hostname.endsWith('.pages.dev')||
      !/^[a-z0-9.-]+$/.test(url.hostname)||url.username||url.password)
     throw Error('Expected a Cloudflare Pages HTTPS preview URL');
-  const prefix=url.hostname.split('.')[0];
-  if(!prefix.includes('preview-')&&!prefix.includes('staging-'))
-    throw Error('Refuse possibly production Pages hostname');
+  // Cloudflare Pages supports project domains and deployment/branch subdomains.
+  // Require an explicitly identified dedicated project; a random deployment prefix is
+  // not proof of isolation, and checking only the first hostname label rejects safe URLs.
+  const project=String(process.env.PREVIEW_PROJECT||'');
+  if(!/^[a-z0-9-]{6,63}$/.test(project)||
+     (!project.includes('-preview-')&&!project.includes('-staging-')))
+    throw Error('Expected an explicitly configured isolated preview project');
+  if(url.hostname!==project+'.pages.dev'&&!url.hostname.endsWith('.'+project+'.pages.dev'))
+    throw Error('Preview URL does not belong to the approved Cloudflare Pages project');
   const request=async(route)=>{
     const response=await fetch(new URL(route,url),{headers:{accept:'application/json'},signal:AbortSignal.timeout(12000)});
     return {response,body:await response.text()};
