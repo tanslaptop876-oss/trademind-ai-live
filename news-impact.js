@@ -40,7 +40,27 @@
       classified:labeled.length,total:valid.length,highImpactCount:highCount,
       reasons:['Headlines classified by simple event phrases, not full articles','Effect limited to ±5 evidence-score points; risk band may widen']};
   }
-  const api={classify,analyze};
+
+  // Separate, explicitly hypothetical news-conditional branch, never used to update base results.
+  // A headline classification is NOT the probability or magnitude of any real price reaction.
+  function conditionalScenario({prices,score,vol,horizon,analysis}={}){
+    if(!Array.isArray(prices)||prices.length<30||prices.some(v=>!Number.isFinite(v)||v<=0)
+      ||!Number.isFinite(score)||!Number.isFinite(vol)||vol<0
+      ||!Number.isInteger(horizon)||horizon<1||horizon>100
+      ||!analysis||analysis.status!=='ok')return null;
+    const recent=prices.slice(-30),slope=(recent.at(-1)-recent[0])/(recent.length-1);
+    const entry=prices.at(-1);
+    const bounded=Number.isFinite(analysis.scoreDelta)?Math.max(-5,Math.min(5,analysis.scoreDelta)):0;
+    const adjusted=Math.max(0,Math.min(100,score+bounded));
+    const bias=(adjusted-50)/50*Math.abs(slope||entry*.002);
+    const middle=entry+(slope+bias)*horizon;
+    const uncertainty=entry*(vol/100/Math.sqrt(252))*Math.sqrt(horizon)
+      *Math.max(1,Math.min(1.3,Number(analysis.uncertaintyFactor)||1));
+    return {entry,middle,upside:middle+uncertainty,downside:Math.max(0,middle-uncertainty),
+      conditional:true,probability:null,uncertaintyFactor:analysis.uncertaintyFactor,
+      note:'Hypothetical conditional case; headline impact and event probability are not calibrated'};
+  }
+  const api={classify,analyze,conditionalScenario};
   root.TradeMindNews=api;
   if(typeof module!=='undefined'&&module.exports)module.exports=api;
 })(typeof globalThis!=='undefined'?globalThis:this);
