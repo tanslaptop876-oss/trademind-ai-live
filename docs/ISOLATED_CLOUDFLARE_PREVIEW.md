@@ -34,3 +34,11 @@ The preview builder now copies a **dedicated** `preview-functions/api/market-dat
 The GitHub Chromium QA workflow runs `tests/browser-smoke.cjs` twice: against the development files and the **exact generated preview static assets** (`PREVIEW_PACKAGE=1`). The latter asserts that the broker controls are disabled while demo, historical journal, crypto scan and multi-timeframe research work with mock data. It does not test actual hosted Cloudflare Pages routing, access control, D1 or broker connectivity.
 
 The isolated preview deployment workflow remains manual-only and requires a separate Cloudflare Pages project with dedicated environment secrets. It has not been executed.
+
+## Cloudflare Functions compilation and hosted smoke test
+
+The scanner CI now runs the real Wrangler v4 Pages Functions bundler against `.preview-package/functions` before any deployment. The manual-only `isolated-preview.yml` workflow also compiles its functions as a deployment preflight. No Cloudflare credentials are required for compilation and it does not publish a site.
+
+After an isolated project has actually been deployed, run **Actions → TradeMind hosted preview smoke (manual)** from this branch with its exact HTTPS preview URL. This read-only script validates the HTML and `preview-mode.js`, public CoinDCX candles, Frankfurter daily FX status, rejection of stocks by the crypto-only API, and absence of the D1 outcome-write route. It refuses URLs outside Cloudflare `.pages.dev` preview/staging-style hostnames.
+
+Neither CI compilation nor this post-deployment script creates the project or configures API tokens. Hosted smoke has not yet run because no verified preview URL has been supplied. Do not assume there is a deployment from a successful build.
