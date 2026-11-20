@@ -29,7 +29,7 @@ assert.equal(analyze([row('Profit rises', '2026-11-20T08:00:00Z','http://example
   globalThis.fetch=async url=>{
    requested=String(url);
    return new Response(JSON.stringify({articles:[
-     {title:'Reliance Industries profit rises',url:'https://example.com/profit',seendate:new Date(Date.now()-3600000).toISOString().replace(/[-:]/g,'').replace('.000Z','Z')},
+     {title:'Reliance Industries profit rises',url:'https://example.com/profit',seendate:new Date(Date.now()-3600000).toISOString().slice(0,19).replace(/[-:]/g,'')+'Z'},
      {title:'Missing news URL',url:'http://unsafe.example',seendate:'20261120T100000Z'}]}),
      {status:200,headers:{'content-type':'application/json'}});
   };
