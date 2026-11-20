@@ -11,6 +11,8 @@ on:
       - 'scanner-extensions.js'
       - 'signal-journal.js'
       - 'tests/browser-smoke.cjs'
+      - 'tests/build-signal-preview.cjs'
+      - 'preview-functions/api/market-data.js'
       - '.github/workflows/browser-smoke.yml'
   workflow_dispatch:
 permissions:
@@ -29,4 +31,10 @@ jobs:
       - name: Install Chromium browser and runtime dependencies
         run: npx playwright install chromium
       - name: Execute browser smoke tests with mocked crypto candles
+        run: node tests/browser-smoke.cjs
+      - name: Build exact deployable preview package
+        run: node tests/build-signal-preview.cjs
+      - name: Browser test exact deployable preview UI
+        env:
+          PREVIEW_PACKAGE: '1'
         run: node tests/browser-smoke.cjs
