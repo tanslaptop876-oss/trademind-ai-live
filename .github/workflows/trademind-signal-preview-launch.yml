@@ -30,7 +30,7 @@ jobs:
       - name: Check out reviewed, tested feature revision
         uses: actions/checkout@v4
         with:
-          ref: c6e5a785d3adf83eb083d96f0fc4624eb7ea278c
+          ref: 45654d89c3b11f491b07de03a015b90b2a4838ea
           persist-credentials: false
 
       - uses: actions/setup-node@v4
