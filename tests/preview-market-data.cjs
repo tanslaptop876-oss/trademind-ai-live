@@ -10,7 +10,7 @@ const assert=require('node:assert/strict'),fs=require('node:fs');
       assert.equal(parsed.origin,'https://api.coindcx.com');
       assert.equal(parsed.searchParams.get('pair'),'B-BTC_USDT');
       return new Response(JSON.stringify(Array.from({length:40},(_,i)=>{
-        const p=100+i;return {time:Date.UTC(2026,10,1,0,i),open:p,high:p+2,low:p-2,close:p+1,volume:100}
+        const p=100+i;return {time:Math.floor(Date.now()/900000)*900000-(40-i)*900000,open:p,high:p+2,low:p-2,close:p+1,volume:100}
       })),{status:200});
     };
     for(const params of [

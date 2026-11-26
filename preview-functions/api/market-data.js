@@ -20,21 +20,29 @@ export async function onRequestGet({request}){
     if(!upstream.ok)return send({error:'Public CoinDCX endpoint unavailable'},502);
     const values=await upstream.json();
     if(!Array.isArray(values)||values.length>2000)return send({error:'Malformed upstream response'},502);
-    const seen=new Map();
+    const seen=new Map(), now=Date.now();
+    const width=({'1min':60000,'15min':900000,'60min':3600000,daily:86400000})[interval];
     for(const v of values){
       const stamp=Number(v.time),open=Number(v.open),high=Number(v.high),low=Number(v.low),
         close=Number(v.close),volume=v.volume==null?null:Number(v.volume);
-      if(!Number.isFinite(stamp)||stamp<1e12||!Number.isFinite(open)||!Number.isFinite(close)||
+      if(!Number.isSafeInteger(stamp)||stamp<1e12||stamp>8640000000000000||!Number.isFinite(open)||!Number.isFinite(close)||
         !Number.isFinite(high)||!Number.isFinite(low)||low<=0||open<=0||close<=0||
         low>Math.min(open,close)||high<Math.max(open,close)||high<low||
         volume===null||!Number.isFinite(volume)||volume<0)continue;
+      if(stamp+width>now)continue; // Exclude forming and future candles.
       const date=new Date(stamp).toISOString();
+      if(seen.has(date))return send({error:'Duplicate public candle timestamps'},502);
       seen.set(date,{date,open,high,low,close,volume});
     }
     const rows=[...seen.values()].sort((a,b)=>a.date.localeCompare(b.date)).slice(-500);
     if(rows.length<35)return send({error:'Not enough valid public candles'},502);
+    const latest=Date.parse(rows.at(-1).date);
+    if(now-(latest+width)>=width)return send({error:'Public candle feed is stale'},502);
+    if(rows.slice(1).some((row,i)=>Date.parse(row.date)-Date.parse(rows[i].date)!==width))
+      return send({error:'Public candle series has gaps'},502);
     return send({symbol,type:'crypto',mode:'live',interval,source:'CoinDCX public spot candles',
-      currency:pairs[symbol][1],delay:'Public candles; exchange latency and formation unverified',
+      currency:pairs[symbol][1],delay:'Completed public candles; exchange latency unverified',
+      closedCandlesOnly:true,readOnly:true,
       quote:rows.at(-1).close,asOf:rows.at(-1).date,pe:null,rows},200,'public, max-age=30');
   }catch{return send({error:'CoinDCX public data fetch failed'},502)}
 }
